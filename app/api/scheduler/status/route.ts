@@ -7,9 +7,10 @@ export const runtime = "nodejs";
 const DAY_NAMES = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
 
 function nextRunDate(schedule: {
-  frequency: "daily" | "weekly";
+  frequency: "daily" | "weekly" | "monthly";
   hour: number;
   dayOfWeek?: number;
+  dayOfMonth?: number;
 }): { iso: string; label: string } {
   const now    = new Date();
   const target = new Date(now);
@@ -18,6 +19,11 @@ function nextRunDate(schedule: {
     target.setMinutes(0, 0, 0);
     target.setHours(schedule.hour);
     if (target <= now) target.setDate(target.getDate() + 1);
+  } else if (schedule.frequency === "monthly") {
+    const dom = schedule.dayOfMonth ?? 1;
+    target.setDate(dom);
+    target.setHours(schedule.hour, 0, 0, 0);
+    if (target <= now) target.setMonth(target.getMonth() + 1);
   } else {
     const targetDow = schedule.dayOfWeek ?? 6;
     const currentDow = now.getDay();
@@ -33,7 +39,9 @@ function nextRunDate(schedule: {
 
   const day = schedule.frequency === "weekly"
     ? `${DAY_NAMES[schedule.dayOfWeek ?? 6]}s`
-    : "daily";
+    : schedule.frequency === "monthly"
+      ? `monthly (day ${schedule.dayOfMonth ?? 1})`
+      : "daily";
   const at  = `${String(schedule.hour).padStart(2, "0")}:00`;
 
   const label =
