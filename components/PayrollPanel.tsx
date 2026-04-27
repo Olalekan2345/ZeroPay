@@ -8,11 +8,11 @@ import { use0GPrice } from "@/lib/usePrice";
 type Period = "daily" | "weekly" | "monthly";
 
 export default function PayrollPanel({ employer }: { employer: string }) {
-  const [history, setHistory]   = useState<PayrollReport[]>([]);
-  const [loading, setLoading]   = useState(true);
-  const [preview, setPreview]   = useState<PayrollReport | null>(null);
-  const [previewPeriod, setPreviewPeriod] = useState<Period>("weekly");
-  const [previewOffset, setPreviewOffset] = useState<0 | -1>(0);
+  const [history, setHistory]               = useState<PayrollReport[]>([]);
+  const [loading, setLoading]               = useState(true);
+  const [preview, setPreview]               = useState<PayrollReport | null>(null);
+  const [previewPeriod, setPreviewPeriod]   = useState<Period>("weekly");
+  const [previewOffset, setPreviewOffset]   = useState<0 | -1>(0);
   const [previewLoading, setPreviewLoading] = useState(false);
   const price = use0GPrice();
 
@@ -41,8 +41,8 @@ export default function PayrollPanel({ employer }: { employer: string }) {
   useEffect(() => { loadPreview(previewPeriod, previewOffset); }, [employer, previewPeriod, previewOffset]);
 
   function periodLabel(p: Period, offset: 0 | -1) {
-    if (p === "daily")   return offset === -1 ? "Yesterday"   : "Today";
-    if (p === "monthly") return offset === -1 ? "Last month"  : "This month";
+    if (p === "daily")   return offset === -1 ? "Yesterday"  : "Today";
+    if (p === "monthly") return offset === -1 ? "Last month" : "This month";
     return offset === -1 ? "Last week" : "This week";
   }
 
@@ -52,6 +52,10 @@ export default function PayrollPanel({ employer }: { employer: string }) {
     return s === e ? s : `${s} → ${e}`;
   }
 
+  function usd(wei: string) {
+    return tokenToUSD(Number(BigInt(wei)) / 1e18, price);
+  }
+
   return (
     <div className="space-y-6">
 
@@ -59,14 +63,14 @@ export default function PayrollPanel({ employer }: { employer: string }) {
       <div className="card p-6 space-y-4">
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div>
-            <div className="text-base font-semibold dark:text-white">Payroll preview</div>
-            <div className="text-xs text-ink-500 dark:text-gray-400 mt-0.5">
+            <div className="text-base font-semibold" style={{ color: "var(--c-fg)" }}>Payroll preview</div>
+            <div className="text-xs mt-0.5" style={{ color: "var(--c-dim)" }}>
               Live calculation — updates as attendance changes. Not saved until payment runs.
             </div>
           </div>
           <div className="flex gap-2 flex-wrap">
             <select
-              className="input w-auto text-xs"
+              className="text-xs"
               value={previewPeriod}
               onChange={(e) => setPreviewPeriod(e.target.value as Period)}
             >
@@ -75,15 +79,15 @@ export default function PayrollPanel({ employer }: { employer: string }) {
               <option value="monthly">Monthly</option>
             </select>
             <select
-              className="input w-auto text-xs"
+              className="text-xs"
               value={previewOffset}
               onChange={(e) => setPreviewOffset(Number(e.target.value) as 0 | -1)}
             >
               <option value={0}>{periodLabel(previewPeriod, 0)}</option>
               <option value={-1}>{periodLabel(previewPeriod, -1)}</option>
             </select>
-            <button onClick={() => loadPreview(previewPeriod, previewOffset)} disabled={previewLoading} className="btn-ghost text-xs">
-              {previewLoading ? "Loading…" : "Refresh"}
+            <button onClick={() => loadPreview(previewPeriod, previewOffset)} disabled={previewLoading} className="btn-ghost text-xs px-3 py-1.5">
+              {previewLoading ? "Loading…" : "↺ Refresh"}
             </button>
           </div>
         </div>
@@ -91,13 +95,11 @@ export default function PayrollPanel({ employer }: { employer: string }) {
         {preview && (
           <>
             <div className="flex items-center justify-between">
-              <span className="text-xs text-ink-400 dark:text-gray-500">{rangeLabel(preview)}</span>
+              <span className="text-xs" style={{ color: "var(--c-dim)" }}>{rangeLabel(preview)}</span>
               <div className="text-right">
-                <span className="text-lg font-bold dark:text-white">{fmt0G(preview.totalPaidWei)}</span>
-                {tokenToUSD(Number(BigInt(preview.totalPaidWei)) / 1e18, price) && (
-                  <div className="text-xs text-ink-400 dark:text-gray-500">
-                    ≈{tokenToUSD(Number(BigInt(preview.totalPaidWei)) / 1e18, price)}
-                  </div>
+                <span className="text-xl font-bold" style={{ color: "var(--c-fg)" }}>{fmt0G(preview.totalPaidWei)}</span>
+                {usd(preview.totalPaidWei) && (
+                  <div className="text-xs" style={{ color: "var(--c-dim)" }}>≈ {usd(preview.totalPaidWei)}</div>
                 )}
               </div>
             </div>
@@ -105,7 +107,10 @@ export default function PayrollPanel({ employer }: { employer: string }) {
             {preview.warnings.length > 0 && (
               <div className="space-y-1">
                 {preview.warnings.map((w, i) => (
-                  <p key={i} className="text-xs text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 rounded-lg px-3 py-2">
+                  <p key={i}
+                    className="text-xs text-amber-400 rounded-xl px-3 py-2"
+                    style={{ background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.2)" }}
+                  >
                     ⚠ {w}
                   </p>
                 ))}
@@ -113,27 +118,25 @@ export default function PayrollPanel({ employer }: { employer: string }) {
             )}
 
             {preview.lines.filter((l) => l.hoursWorked > 0).length > 0 ? (
-              <table className="w-full text-sm">
-                <thead className="text-left text-xs uppercase text-ink-500 dark:text-gray-400 border-b border-slate-100 dark:border-gray-800">
+              <table className="table-zg w-full">
+                <thead>
                   <tr>
-                    <th className="pb-2">Employee</th>
+                    <th>Employee</th>
                     <th>Hours</th>
                     <th>Rate</th>
                     <th className="text-right">Amount</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-50 dark:divide-gray-800">
+                <tbody>
                   {preview.lines.filter((l) => l.hoursWorked > 0).map((l) => (
                     <tr key={l.employeeId}>
-                      <td className="py-2 font-medium dark:text-white">{l.employeeName}</td>
-                      <td className="dark:text-gray-300">{l.hoursWorked.toFixed(2)}h</td>
-                      <td className="text-ink-400 dark:text-gray-500">{l.hourlyRate} 0G/hr</td>
-                      <td className="text-right font-semibold dark:text-white">
-                        {fmt0G(l.amountWei)}
-                        {tokenToUSD(Number(BigInt(l.amountWei)) / 1e18, price) && (
-                          <div className="text-xs font-normal text-ink-400 dark:text-gray-500">
-                            ≈{tokenToUSD(Number(BigInt(l.amountWei)) / 1e18, price)}
-                          </div>
+                      <td className="font-medium">{l.employeeName}</td>
+                      <td style={{ color: "var(--c-muted)" }}>{l.hoursWorked.toFixed(2)}h</td>
+                      <td className="text-xs" style={{ color: "var(--c-dim)" }}>{l.hourlyRate} 0G/hr</td>
+                      <td className="text-right">
+                        <span className="font-semibold" style={{ color: "var(--c-fg)" }}>{fmt0G(l.amountWei)}</span>
+                        {usd(l.amountWei) && (
+                          <div className="text-xs font-normal" style={{ color: "var(--c-dim)" }}>≈ {usd(l.amountWei)}</div>
                         )}
                       </td>
                     </tr>
@@ -141,7 +144,7 @@ export default function PayrollPanel({ employer }: { employer: string }) {
                 </tbody>
               </table>
             ) : (
-              <p className="text-sm text-ink-400 dark:text-gray-500 text-center py-4">
+              <p className="text-sm text-center py-4" style={{ color: "var(--c-dim)" }}>
                 No payable hours for this period.
               </p>
             )}
@@ -151,27 +154,25 @@ export default function PayrollPanel({ employer }: { employer: string }) {
 
       {/* ── Saved reports ── */}
       <div className="card p-6 space-y-5">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between flex-wrap gap-3">
           <div>
-            <div className="text-base font-semibold dark:text-white">Payment history</div>
-            <div className="text-xs text-ink-500 dark:text-gray-400 mt-0.5">
-              All completed payroll runs stored on 0G Storage.
-            </div>
+            <div className="text-base font-semibold" style={{ color: "var(--c-fg)" }}>Payment history</div>
+            <div className="text-xs mt-0.5" style={{ color: "var(--c-dim)" }}>All completed payroll runs stored on 0G Storage.</div>
           </div>
           <div className="flex gap-2">
-            <button onClick={loadHistory} disabled={loading} className="btn-ghost text-xs">
-              {loading ? "Loading…" : "Refresh"}
+            <button onClick={loadHistory} disabled={loading} className="btn-ghost text-xs px-3 py-1.5">
+              {loading ? "Loading…" : "↺ Refresh"}
             </button>
-            <a href={`/api/payroll/export?employer=${employer}&weekOffset=0`} className="btn-ghost text-xs">
+            <a href={`/api/payroll/export?employer=${employer}&weekOffset=0`} className="btn-ghost text-xs px-3 py-1.5">
               Export CSV
             </a>
           </div>
         </div>
 
         {loading ? (
-          <div className="py-10 text-center text-ink-400 dark:text-gray-500 text-sm">Loading…</div>
+          <div className="py-10 text-center text-sm animate-pulse" style={{ color: "var(--c-dim)" }}>Loading…</div>
         ) : history.length === 0 ? (
-          <div className="py-10 text-center text-ink-400 dark:text-gray-500 text-sm">
+          <div className="py-10 text-center text-sm" style={{ color: "var(--c-dim)" }}>
             No payment runs yet. Use the AI Agent tab to run payroll.
           </div>
         ) : (
@@ -179,55 +180,59 @@ export default function PayrollPanel({ employer }: { employer: string }) {
             {history.map((r, i) => {
               const paid = r.lines.filter((l) => BigInt(l.amountWei) > 0n);
               return (
-                <div key={i} className="rounded-xl border border-slate-100 dark:border-gray-800 p-5 space-y-3">
+                <div
+                  key={i}
+                  className="rounded-xl p-5 space-y-3 transition-colors"
+                  style={{ background: "var(--c-bg-card)", border: "1px solid var(--c-border)" }}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = "var(--c-bg-hover)")}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = "var(--c-bg-card)")}
+                >
                   <div className="flex items-start justify-between gap-4">
                     <div>
-                      <div className="text-sm font-semibold dark:text-white">{rangeLabel(r)}</div>
-                      <div className="text-xs text-ink-500 dark:text-gray-400 mt-0.5">
+                      <div className="text-sm font-semibold" style={{ color: "var(--c-fg)" }}>{rangeLabel(r)}</div>
+                      <div className="text-xs mt-0.5" style={{ color: "var(--c-dim)" }}>
                         {paid.length} employee(s) paid · {new Date(r.generatedAt).toLocaleString()}
                       </div>
                     </div>
-                    <div className="text-right">
-                      <div className="text-lg font-semibold dark:text-white">{fmt0G(r.totalPaidWei)}</div>
-                      {tokenToUSD(Number(BigInt(r.totalPaidWei)) / 1e18, price) && (
-                        <div className="text-xs text-ink-400 dark:text-gray-500">
-                          ≈{tokenToUSD(Number(BigInt(r.totalPaidWei)) / 1e18, price)}
-                        </div>
+                    <div className="text-right flex-shrink-0">
+                      <div className="text-lg font-bold" style={{ color: "var(--c-fg)" }}>{fmt0G(r.totalPaidWei)}</div>
+                      {usd(r.totalPaidWei) && (
+                        <div className="text-xs" style={{ color: "var(--c-dim)" }}>≈ {usd(r.totalPaidWei)}</div>
                       )}
                       {r.txHash
-                        ? <span className="pill bg-brand-50 text-brand-700 dark:bg-brand-900/40 dark:text-brand-300 text-xs">On-chain</span>
-                        : <span className="pill bg-slate-100 text-ink-500 dark:bg-gray-800 dark:text-gray-400 text-xs">Draft</span>
+                        ? <span className="pill-cyan text-xs mt-1">On-chain</span>
+                        : <span className="pill text-xs mt-1" style={{ background: "var(--c-bg-hover)", color: "var(--c-muted)", border: "1px solid var(--c-border)" }}>Draft</span>
                       }
                     </div>
                   </div>
 
-                  <div className="divide-y divide-slate-50 dark:divide-gray-800">
+                  <div>
                     {r.lines.map((l) => (
-                      <div key={l.employeeId} className="flex items-center justify-between py-2 text-sm">
+                      <div key={l.employeeId} className="flex items-center justify-between py-2 text-sm" style={{ borderTop: "1px solid var(--c-border)" }}>
                         <div>
-                          <span className="font-medium dark:text-white">{l.employeeName}</span>
-                          <span className="ml-2 text-xs text-ink-400 dark:text-gray-500">
+                          <span className="font-medium" style={{ color: "var(--c-fg)" }}>{l.employeeName}</span>
+                          <span className="ml-2 text-xs" style={{ color: "var(--c-dim)" }}>
                             {l.hoursWorked.toFixed(2)}h × {l.hourlyRate} 0G/hr
                           </span>
                         </div>
-                        <span className="font-medium dark:text-white">
+                        <span className="font-medium" style={{ color: "var(--c-muted)" }}>
                           {fmt0G(l.amountWei)}
-                          {tokenToUSD(Number(BigInt(l.amountWei)) / 1e18, price) && (
-                            <span className="ml-1 text-xs font-normal text-ink-400 dark:text-gray-500">
-                              ≈{tokenToUSD(Number(BigInt(l.amountWei)) / 1e18, price)}
-                            </span>
+                          {usd(l.amountWei) && (
+                            <span className="ml-1 text-xs font-normal" style={{ color: "var(--c-dim)" }}>≈ {usd(l.amountWei)}</span>
                           )}
                         </span>
                       </div>
                     ))}
                   </div>
 
-                  <div className="flex flex-wrap gap-4 text-xs text-ink-400 dark:text-gray-500 pt-1">
+                  <div className="flex flex-wrap gap-4 text-xs pt-1" style={{ color: "var(--c-dim)" }}>
                     {r.txHash && (
-                      <span>Tx: <span className="font-mono">{short(r.txHash)}</span></span>
+                      <span>Tx: <span className="font-mono" style={{ color: "var(--c-muted)" }}>{short(r.txHash)}</span></span>
                     )}
                     {r.storageRef && (
-                      <span title={r.storageRef}>0G ref: <span className="font-mono">{r.storageRef.slice(0, 20)}…</span></span>
+                      <span title={r.storageRef}>
+                        0G ref: <span className="font-mono" style={{ color: "var(--c-muted)" }}>{r.storageRef.slice(0, 20)}…</span>
+                      </span>
                     )}
                   </div>
                 </div>

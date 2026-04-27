@@ -30,11 +30,11 @@ export default function PoolCard({ employer }: { employer: string }) {
   const [pendingTx, setPendingTx] = useState<`0x${string}` | undefined>();
   const price                     = use0GPrice();
 
-  const { chainId }                                    = useAccount();
-  const { switchChainAsync, isPending: switching }     = useSwitchChain();
-  const { sendTransactionAsync, isPending: sending }   = useSendTransaction();
-  const { writeContractAsync, isPending: writing }     = useWriteContract();
-  const { isLoading: confirming, isSuccess: confirmed } =
+  const { chainId }                                      = useAccount();
+  const { switchChainAsync, isPending: switching }       = useSwitchChain();
+  const { sendTransactionAsync, isPending: sending }     = useSendTransaction();
+  const { writeContractAsync, isPending: writing }       = useWriteContract();
+  const { isLoading: confirming, isSuccess: confirmed }  =
     useWaitForTransactionReceipt({ hash: pendingTx });
 
   async function refresh() {
@@ -85,7 +85,6 @@ export default function PoolCard({ employer }: { employer: string }) {
     const ok = await ensureNetwork();
     if (!ok) return;
     try {
-      // Plain ETH transfer → triggers receive() on the contract
       const hash = await sendTransactionAsync({
         to:      pool.address,
         value:   parseEther(amount),
@@ -142,50 +141,58 @@ export default function PoolCard({ employer }: { employer: string }) {
     }
   }
 
-  const balance     = pool ? BigInt(pool.balanceWei ?? "0") : 0n;
-  const balanceEth  = Number(balance) / 1e18;
-  const busy        = sending || writing || confirming || switching;
+  const balance      = pool ? BigInt(pool.balanceWei ?? "0") : 0n;
+  const balanceEth   = Number(balance) / 1e18;
+  const busy         = sending || writing || confirming || switching;
   const onWrongChain = !!chainId && chainId !== zgGalileo.id;
 
   return (
-    <div className="card p-6 space-y-5">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <div className="text-xs uppercase tracking-wide font-semibold text-ink-500 dark:text-gray-400">
-            Payroll Pool
+    <div className="card p-6 space-y-6">
+      {/* Header row */}
+      <div className="flex items-start justify-between gap-4">
+        <div className="min-w-0">
+          <div className="text-xs uppercase tracking-widest font-medium mb-2" style={{ color: "var(--c-dim)" }}>
+            Payroll Pool Balance
           </div>
-          <div className="text-4xl font-bold tracking-tight mt-1 dark:text-white">
+          <div className="text-4xl font-bold tracking-tight" style={{ color: "var(--c-fg)" }}>
             {pool?.configured ? fmt0G(pool.balanceWei) : "—"}
           </div>
           {pool?.configured && price && (
-            <div className="text-sm text-ink-400 dark:text-gray-500 mt-0.5">
-              ≈{tokenToUSD(balanceEth, price)}
+            <div className="text-sm mt-1" style={{ color: "var(--c-dim)" }}>
+              ≈ {tokenToUSD(balanceEth, price)}
             </div>
           )}
           {pool?.address && (
-            <div className="text-xs text-ink-400 dark:text-gray-500 font-mono mt-1 break-all">
+            <div className="font-mono text-xs mt-2 break-all" style={{ color: "var(--c-dim)" }}>
               {pool.address}
             </div>
           )}
         </div>
-        <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-brand-500 to-emerald-600
-            flex items-center justify-center flex-shrink-0">
+
+        <div
+          className="w-12 h-12 rounded-2xl flex items-center justify-center flex-shrink-0"
+          style={{
+            background: "linear-gradient(135deg, #9200e1 0%, #dd23bb 100%)",
+            boxShadow: "0 0 20px rgba(146,0,225,0.3)",
+          }}
+        >
           <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
               d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
         </div>
       </div>
 
-      {/* Wrong network */}
+      {/* Wrong network banner */}
       {onWrongChain && (
-        <div className="rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 px-4 py-3 flex items-center justify-between gap-3">
-          <p className="text-xs font-medium text-amber-800 dark:text-amber-300">
+        <div
+          className="rounded-xl border border-amber-500/25 px-4 py-3 flex items-center justify-between gap-3"
+          style={{ background: "rgba(245,158,11,0.08)" }}
+        >
+          <p className="text-xs font-medium text-amber-400">
             Switch to <strong>0G Galileo (chain {zgGalileo.id})</strong> to transact.
           </p>
-          <button onClick={ensureNetwork} disabled={switching}
-            className="btn text-xs bg-amber-600 text-white hover:bg-amber-700 flex-shrink-0">
+          <button onClick={ensureNetwork} disabled={switching} className="btn-ghost text-xs flex-shrink-0">
             {switching ? "Switching…" : "Switch network"}
           </button>
         </div>
@@ -193,12 +200,15 @@ export default function PoolCard({ employer }: { employer: string }) {
 
       {/* No contract yet */}
       {!pool?.configured && (
-        <div className="rounded-xl border border-dashed border-slate-200 dark:border-gray-700 p-5 space-y-3">
+        <div
+          className="rounded-xl border border-dashed p-5 space-y-4"
+          style={{ borderColor: "var(--c-border-s)", background: "var(--c-bg-card)" }}
+        >
           <div>
-            <p className="text-sm font-medium dark:text-white">No payroll contract yet</p>
-            <p className="text-xs text-ink-500 dark:text-gray-400 mt-0.5">
-              Deploy a dedicated SecuredVault contract for your business. Your wallet becomes
-              the owner; the platform handles payroll execution.
+            <p className="text-sm font-semibold" style={{ color: "var(--c-fg)" }}>No payroll contract yet</p>
+            <p className="text-xs mt-1 leading-relaxed" style={{ color: "var(--c-muted)" }}>
+              Deploy a dedicated SecuredVault for your business. Your wallet becomes the owner;
+              a fresh isolated operator key handles payroll execution.
             </p>
           </div>
           <button onClick={deployContract} disabled={deploying} className="btn-primary">
@@ -207,10 +217,13 @@ export default function PoolCard({ employer }: { employer: string }) {
         </div>
       )}
 
-      {/* Bad address */}
+      {/* Bad contract address */}
       {pool?.configured && pool.hasCode === false && (
-        <div className="rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 px-4 py-3 space-y-3">
-          <p className="text-xs font-semibold text-red-700 dark:text-red-400">No contract found at this address.</p>
+        <div
+          className="rounded-xl border border-red-500/25 px-4 py-4 space-y-3"
+          style={{ background: "rgba(239,68,68,0.06)" }}
+        >
+          <p className="text-xs font-semibold text-red-400">No contract found at saved address.</p>
           <button onClick={deployContract} disabled={deploying} className="btn-primary text-xs">
             {deploying ? "Deploying…" : "Deploy new contract"}
           </button>
@@ -233,39 +246,36 @@ export default function PoolCard({ employer }: { employer: string }) {
           </div>
 
           <div className="flex gap-3">
-            <button
-              onClick={deposit}
-              disabled={busy || onWrongChain}
-              className="btn-primary flex-1"
-            >
-              {switching   ? "Switching…"        :
-               sending     ? "Confirm in Rabby…" :
-               confirming  ? "Confirming…"       : "Deposit"}
+            <button onClick={deposit} disabled={busy || onWrongChain} className="btn-primary flex-1">
+              {switching  ? "Switching…"        :
+               sending    ? "Confirm in wallet…" :
+               confirming ? "Confirming…"       : "Deposit"}
             </button>
             <button
               onClick={withdraw}
               disabled={busy || onWrongChain || balance === 0n}
               className="btn-ghost flex-1"
             >
-              {writing    ? "Confirm in Rabby…" :
+              {writing    ? "Confirm in wallet…" :
                confirming ? "Confirming…"       : "Withdraw"}
             </button>
           </div>
 
-          <p className="text-xs text-ink-400 dark:text-gray-500">
-            Both operations open a Rabby confirmation popup before anything is sent.
+          <p className="text-xs" style={{ color: "var(--c-dim)" }}>
+            Both operations require wallet confirmation before anything is sent.
           </p>
         </div>
       )}
 
       {/* Feedback */}
       {msg && (
-        <p className={`text-xs font-medium break-all ${msg.ok ? "text-brand-600 dark:text-brand-400" : "text-red-500"}`}>
+        <p className={`text-xs font-medium break-all ${msg.ok ? "" : "text-red-400"}`}
+          style={msg.ok ? { color: "var(--c-primary)" } : undefined}>
           {msg.text}
         </p>
       )}
       {pendingTx && !confirmed && (
-        <p className="font-mono text-xs text-ink-300 dark:text-gray-600 break-all">Tx: {pendingTx}</p>
+        <p className="font-mono text-xs break-all" style={{ color: "var(--c-dim)" }}>Tx: {pendingTx}</p>
       )}
     </div>
   );

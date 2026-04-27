@@ -3,16 +3,18 @@ import { ethers } from "ethers";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { requireEmployer } from "@/lib/tenant";
-import { saveSettings, getSettings } from "@/lib/db";
+import { saveSettings, getSettings, saveOperatorKey } from "@/lib/db";
 
 export const runtime = "nodejs";
+
+const SEED_AMOUNT = ethers.parseEther("0.02"); // gas reserve for new operator key
 
 export async function POST(req: Request) {
   const g = await requireEmployer(req.url);
   if (!g.ok) return NextResponse.json({ error: g.error }, { status: g.status });
 
-  const pk = process.env.EMPLOYER_PRIVATE_KEY;
-  if (!pk)
+  const platformPk = process.env.EMPLOYER_PRIVATE_KEY;
+  if (!platformPk)
     return NextResponse.json(
       { error: "EMPLOYER_PRIVATE_KEY not set — platform key required to deploy." },
       { status: 500 },
@@ -40,17 +42,34 @@ export async function POST(req: Request) {
 
     const rpc      = process.env.NEXT_PUBLIC_ZG_RPC_URL ?? "https://evmrpc-testnet.0g.ai";
     const provider = new ethers.JsonRpcProvider(rpc);
-    const signer   = new ethers.Wallet(pk.startsWith("0x") ? pk : "0x" + pk, provider);
+    const platform = new ethers.Wallet(
+      platformPk.startsWith("0x") ? platformPk : "0x" + platformPk,
+      provider,
+    );
 
-    const operatorAddress = signer.address;          // platform key = operator
-    const ownerAddress    = ethers.getAddress(g.employer); // employer wallet = owner
+    // Generate a fresh operator keypair for this employer
+    const operatorWallet  = ethers.Wallet.createRandom().connect(provider);
+    const operatorAddress = operatorWallet.address;
+    const operatorKey     = operatorWallet.privateKey;
 
-    const factory  = new ethers.ContractFactory(abi, bytecode, signer);
+    // Seed the operator address with gas (0.02 0G) from the platform key
+    const seedTx = await platform.sendTransaction({
+      to: operatorAddress,
+      value: SEED_AMOUNT,
+    });
+    await seedTx.wait();
+
+    const ownerAddress = ethers.getAddress(g.employer); // employer wallet = owner
+
+    // Deploy contract: employer = owner, fresh operator = transaction signer
+    const factory  = new ethers.ContractFactory(abi, bytecode, platform);
     const contract = await factory.deploy(ownerAddress, operatorAddress);
     await contract.waitForDeployment();
     const address  = await contract.getAddress() as `0x${string}`;
 
+    // Save pool address in settings; save operator key to a separate gitignored file
     await saveSettings(g.employer, { poolAddress: address });
+    await saveOperatorKey(g.employer, operatorKey);
 
     return NextResponse.json({ address, owner: ownerAddress, operator: operatorAddress });
   } catch (err) {

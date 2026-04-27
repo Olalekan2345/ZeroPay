@@ -49,13 +49,15 @@ export async function GET(req: Request) {
     const tsMap = new Map(blocks.map((b) => [b.number.toString(), Number(b.timestamp)]));
 
     const txs = logs
-      .map((log) => {
+      .map((log, i) => {
         const ts = tsMap.get(log.blockNumber!.toString()) ?? 0;
         const base = {
-          txHash:    log.transactionHash,
+          txHash:      log.transactionHash,
           blockNumber: Number(log.blockNumber),
-          timestamp: ts * 1000, // ms
-          event:     log.eventName,
+          timestamp:   ts * 1000, // ms
+          event:       log.eventName,
+          // Stable unique key even when multiple events share the same txHash
+          key:         `${log.transactionHash}-${log.eventName}-${i}`,
         };
 
         if (log.eventName === "Funded") {
@@ -74,7 +76,7 @@ export async function GET(req: Request) {
           return {
             ...base,
             employee,
-            amount: formatEther(amount),
+            amount:      formatEther(amount),
             hoursWorked: Number(hoursWorked) / 100,
             label: "Salary",
           };
@@ -86,7 +88,7 @@ export async function GET(req: Request) {
           };
           return {
             ...base,
-            totalPaid: formatEther(totalPaid),
+            totalPaid:     formatEther(totalPaid),
             employeeCount: Number(employeeCount),
             label: "Batch payroll",
           };

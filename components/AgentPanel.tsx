@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import type { PayrollReport, PayrollLine } from "@/lib/types";
+import type { PayrollReport, PayrollLine, Employee } from "@/lib/types";
 import type { PaymentSchedule } from "@/lib/db";
 import { fmt0G, tokenToUSD, short } from "@/lib/format";
 import { use0GPrice } from "@/lib/usePrice";
@@ -10,7 +10,6 @@ import { PAYROLL_POOL_ABI } from "@/lib/abi/PayrollPool";
 import { zgGalileo } from "@/lib/chain";
 import { WORK_START_HOUR, WORK_END_HOUR, MAX_DAILY_HOURS } from "@/lib/agent";
 
-/* ── Types ── */
 type Message = {
   from: "agent" | "system" | "tx";
   text: string;
@@ -27,37 +26,38 @@ type SchedulerStatus = {
 };
 
 const DAY_NAMES = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
-const HOUR_OPTIONS = Array.from({ length: 24 }, (_, i) => ({
-  value: i,
-  label: `${String(i).padStart(2,"0")}:00`,
-}));
 const DAY_OF_MONTH_OPTIONS = Array.from({ length: 28 }, (_, i) => ({
   value: i + 1,
   label: `${i + 1}${[,"st","nd","rd"][((i+1)%100<11||((i+1)%100>13))&&(i+1)%10<4?(i+1)%10:0]||"th"}`,
 }));
 
-/* ── Component ── */
+const GRADIENT = "linear-gradient(135deg, #9200e1 0%, #dd23bb 100%)";
+
 export default function AgentPanel({ employer }: { employer: string }) {
-  const [messages, setMessages]     = useState<Message[]>([]);
-  const [schedule, setSchedule]         = useState<PaymentSchedule>({
+  const [messages, setMessages]               = useState<Message[]>([]);
+  const [schedule, setSchedule]               = useState<PaymentSchedule>({
     frequency: "weekly", hour: 9, minute: 0, dayOfWeek: 6, dayOfMonth: 1,
   });
+  const [scheduleEditing, setScheduleEditing] = useState(false);
   const [cancellingSchedule, setCancellingSchedule] = useState(false);
-  const [payNowBusy, setPayNowBusy]     = useState(false);
-  const [payNowResult, setPayNowResult] = useState<{ ok: boolean; text: string } | null>(null);
+  const [payNowBusy, setPayNowBusy]           = useState(false);
+  const [payNowResult, setPayNowResult]       = useState<{ ok: boolean; text: string } | null>(null);
   const [savingSched, setSavingSched]         = useState(false);
   const [schedulerStatus, setSchedulerStatus] = useState<SchedulerStatus | null>(null);
-  const [period, setPeriod]                   = useState<"daily" | "weekly">("weekly");
+  const [period, setPeriod]                   = useState<"daily" | "weekly" | "monthly">("weekly");
   const [offset, setOffset]                   = useState<0 | -1>(0);
   const [report, setReport]                   = useState<PayrollReport | null>(null);
   const [poolAddress, setPoolAddress]         = useState<`0x${string}` | null>(null);
   const [running, setRunning]                 = useState(false);
   const [txHash, setTxHash]                   = useState<`0x${string}` | undefined>();
+  const [employees, setEmployees]             = useState<Employee[]>([]);
+  const [selectedIds, setSelectedIds]         = useState<Set<string>>(new Set());
   const bottomRef                             = useRef<HTMLDivElement>(null);
   const { address, chainId }                  = useAccount();
   const { switchChainAsync }                  = useSwitchChain();
   const { writeContractAsync, isPending }     = useWriteContract();
   const { isLoading: waiting, isSuccess }     = useWaitForTransactionReceipt({ hash: txHash });
+  const price                                 = use0GPrice();
 
   function push(msg: Omit<Message, "ts">) {
     setMessages((p) => [...p, { ...msg, ts: Date.now() }]);
@@ -82,6 +82,16 @@ export default function AgentPanel({ employer }: { employer: string }) {
     setPoolAddress(p?.address ?? null);
     return p?.address ?? null;
   }
+
+  useEffect(() => {
+    fetch(`/api/employees?employer=${employer}`)
+      .then((r) => r.json())
+      .then((list) => {
+        const emps: Employee[] = Array.isArray(list) ? list : [];
+        setEmployees(emps);
+        setSelectedIds(new Set(emps.map((e) => e.id)));
+      });
+  }, [employer]);
 
   useEffect(() => {
     loadSchedulerStatus();
@@ -157,7 +167,11 @@ export default function AgentPanel({ employer }: { employer: string }) {
       const res = await fetch(`/api/payroll/run?employer=${employer}`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ weekOffset: offset, period }),
+        body: JSON.stringify({
+          weekOffset: offset,
+          period,
+          employeeIds: selectedIds.size < employees.length ? [...selectedIds] : undefined,
+        }),
       });
       const body = await res.json();
       if (body.txHash) {
@@ -187,10 +201,10 @@ export default function AgentPanel({ employer }: { employer: string }) {
     push({ from: "system", text: `— Run started ${new Date().toLocaleString()} —` });
     push({ from: "agent", text: `Fetching attendance records from 0G Storage index…` });
 
-    const r = await fetch(
-      `/api/payroll/preview?employer=${employer}&weekOffset=${offset}&period=${period}`,
-      { cache: "no-store" },
-    );
+    const filteredIds = selectedIds.size < employees.length ? [...selectedIds] : null;
+    const previewUrl = `/api/payroll/preview?employer=${employer}&weekOffset=${offset}&period=${period}`
+      + (filteredIds ? `&employeeIds=${filteredIds.join(",")}` : "");
+    const r = await fetch(previewUrl, { cache: "no-store" });
     const rep: PayrollReport = await r.json();
     setReport(rep);
 
@@ -243,7 +257,11 @@ export default function AgentPanel({ employer }: { employer: string }) {
     const saveRes = await fetch(`/api/payroll/save?employer=${employer}`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ weekOffset: offset, period }),
+      body: JSON.stringify({
+        weekOffset: offset,
+        period,
+        employeeIds: filteredIds ?? undefined,
+      }),
     });
     const saved = await saveRes.json();
     push({ from: "agent", text: `Report stored → ${saved.storageRef ?? "—"}` });
@@ -259,7 +277,6 @@ export default function AgentPanel({ employer }: { employer: string }) {
         }
       }
 
-      // gas cap skips eth_estimateGas simulation — required for 0G Galileo RPC
       const gasLimit = BigInt(100_000 + payable.length * 80_000);
       const hash = await writeContractAsync({
         address: pa,
@@ -289,68 +306,94 @@ export default function AgentPanel({ employer }: { employer: string }) {
     }
   }
 
-  const price = use0GPrice();
   const busy = running || isPending || waiting;
+
+  /* ── Helpers ── */
+  function schedSummary() {
+    const t = `${String(schedule.hour).padStart(2,"0")}:${String(schedule.minute ?? 0).padStart(2,"0")}`;
+    if (schedule.frequency === "daily")   return `Every day at ${t}`;
+    if (schedule.frequency === "monthly") return `${DAY_OF_MONTH_OPTIONS[(schedule.dayOfMonth ?? 1) - 1]?.label} of each month at ${t}`;
+    return `Every ${DAY_NAMES[schedule.dayOfWeek ?? 6]} at ${t}`;
+  }
+
+  function periodLabel(p: typeof period, o: 0 | -1) {
+    if (p === "daily")   return o === -1 ? "Yesterday"  : "Today";
+    if (p === "monthly") return o === -1 ? "Last month" : "This month";
+    return o === -1 ? "Last week" : "This week";
+  }
+
+  /* ── Pill button helper ── */
+  function FreqPill({ val, label }: { val: "daily" | "weekly" | "monthly"; label: string }) {
+    const active = schedule.frequency === val;
+    return (
+      <button
+        onClick={() => setSchedule((s) => ({ ...s, frequency: val }))}
+        className="px-4 py-2 rounded-xl text-sm font-medium transition-all duration-150 border"
+        style={active
+          ? { background: GRADIENT, color: "#fff", border: "1px solid transparent", boxShadow: "0 0 12px rgba(146,0,225,0.3)" }
+          : { background: "var(--c-bg-hover)", color: "var(--c-muted)", borderColor: "var(--c-border)" }
+        }
+      >
+        {label}
+      </button>
+    );
+  }
+
+  function DayPill({ day, idx }: { day: string; idx: number }) {
+    const active = (schedule.dayOfWeek ?? 6) === idx;
+    return (
+      <button
+        onClick={() => setSchedule((s) => ({ ...s, dayOfWeek: idx }))}
+        className="px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-150 border"
+        style={active
+          ? { background: GRADIENT, color: "#fff", border: "1px solid transparent" }
+          : { background: "var(--c-bg-hover)", color: "var(--c-muted)", borderColor: "var(--c-border)" }
+        }
+      >
+        {day.slice(0, 3)}
+      </button>
+    );
+  }
 
   return (
     <div className="space-y-4">
+
       {/* ── Schedule config ── */}
-      <div className="card p-5 space-y-5 dark:bg-gray-900">
-        {/* Header row */}
-        <div className="flex items-center justify-between gap-4">
+      <div className="card p-5 space-y-5">
+        {/* Header */}
+        <div className="flex items-center justify-between gap-4 flex-wrap">
           <div>
-            <div className="text-sm font-semibold dark:text-white">Automatic payment schedule</div>
-            <div className="text-xs text-ink-400 dark:text-gray-500 mt-0.5">
-              The scheduler will execute payroll automatically at the time you set.
+            <div className="text-sm font-semibold" style={{ color: "var(--c-fg)" }}>Automatic payment schedule</div>
+            <div className="text-xs mt-0.5" style={{ color: "var(--c-dim)" }}>
+              The scheduler executes payroll automatically at the configured time.
             </div>
           </div>
           {schedulerStatus?.next && (
-            <div className="flex items-center gap-1.5 text-xs text-brand-600 dark:text-brand-400 font-semibold whitespace-nowrap">
-              <span className="w-2 h-2 rounded-full bg-brand-500 animate-pulse inline-block" />
+            <div className="flex items-center gap-1.5 text-xs font-semibold whitespace-nowrap"
+              style={{ color: "var(--c-primary)" }}>
+              <span className="w-2 h-2 rounded-full animate-pulse inline-block" style={{ background: "var(--c-primary)" }} />
               {schedulerStatus.next.label}
             </div>
           )}
         </div>
 
-        {/* Frequency pills */}
+        {/* Frequency */}
         <div>
           <label className="label mb-2">Frequency</label>
-          <div className="flex gap-2">
-            {(["daily","weekly","monthly"] as const).map((f) => (
-              <button
-                key={f}
-                onClick={() => setSchedule((s) => ({ ...s, frequency: f }))}
-                className={`px-4 py-2 rounded-xl text-sm font-medium border transition-all ${
-                  schedule.frequency === f
-                    ? "bg-brand-600 text-white border-brand-600 shadow-sm"
-                    : "bg-white dark:bg-gray-800 text-ink-500 dark:text-gray-400 border-slate-200 dark:border-gray-700 hover:border-brand-400 hover:text-brand-600"
-                }`}
-              >
-                {f.charAt(0).toUpperCase() + f.slice(1)}
-              </button>
-            ))}
+          <div className="flex gap-2 flex-wrap">
+            <FreqPill val="daily"   label="Daily"   />
+            <FreqPill val="weekly"  label="Weekly"  />
+            <FreqPill val="monthly" label="Monthly" />
           </div>
         </div>
 
-        {/* Day picker — weekly or monthly */}
+        {/* Day picker */}
         <div className="grid sm:grid-cols-2 gap-4">
           {schedule.frequency === "weekly" && (
             <div>
               <label className="label mb-2">Pay day</label>
               <div className="flex flex-wrap gap-1.5">
-                {DAY_NAMES.map((d, i) => (
-                  <button
-                    key={i}
-                    onClick={() => setSchedule((s) => ({ ...s, dayOfWeek: i }))}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-all ${
-                      (schedule.dayOfWeek ?? 6) === i
-                        ? "bg-brand-600 text-white border-brand-600"
-                        : "bg-white dark:bg-gray-800 text-ink-500 dark:text-gray-400 border-slate-200 dark:border-gray-700 hover:border-brand-400 hover:text-brand-600"
-                    }`}
-                  >
-                    {d.slice(0, 3)}
-                  </button>
-                ))}
+                {DAY_NAMES.map((d, i) => <DayPill key={i} day={d} idx={i} />)}
               </div>
             </div>
           )}
@@ -359,9 +402,9 @@ export default function AgentPanel({ employer }: { employer: string }) {
             <div>
               <label className="label mb-2">Day of month</label>
               <select
-                className="input w-auto"
                 value={schedule.dayOfMonth ?? 1}
                 onChange={(e) => setSchedule((s) => ({ ...s, dayOfMonth: Number(e.target.value) }))}
+                className="text-xs"
               >
                 {DAY_OF_MONTH_OPTIONS.map((o) => (
                   <option key={o.value} value={o.value}>{o.label}</option>
@@ -370,7 +413,6 @@ export default function AgentPanel({ employer }: { employer: string }) {
             </div>
           )}
 
-          {/* Time picker */}
           <div>
             <label className="label mb-2">Execution time</label>
             <input
@@ -392,23 +434,14 @@ export default function AgentPanel({ employer }: { employer: string }) {
         </div>
 
         {/* Summary + actions */}
-        <div className="flex items-center justify-between gap-4 pt-1 border-t border-slate-100 dark:border-gray-800">
-          <p className="text-sm text-ink-500 dark:text-gray-400">
-            {(() => {
-              const t = `${String(schedule.hour).padStart(2,"0")}:${String(schedule.minute ?? 0).padStart(2,"0")}`;
-              if (schedule.frequency === "daily")
-                return `Runs every day at ${t}`;
-              if (schedule.frequency === "monthly")
-                return `Runs on the ${DAY_OF_MONTH_OPTIONS[(schedule.dayOfMonth ?? 1) - 1]?.label} of each month at ${t}`;
-              return `Runs every ${DAY_NAMES[schedule.dayOfWeek ?? 6]} at ${t}`;
-            })()}
-          </p>
+        <div className="flex items-center justify-between gap-4 pt-1 flex-wrap" style={{ borderTop: "1px solid var(--c-border)" }}>
+          <p className="text-sm" style={{ color: "var(--c-muted)" }}>{schedSummary()}</p>
           <div className="flex gap-2">
             {schedulerStatus?.schedule && (
               <button
                 onClick={cancelSchedule}
                 disabled={cancellingSchedule || savingSched}
-                className="btn-ghost text-xs text-red-500 hover:text-red-600 border-red-200 dark:border-red-800"
+                className="btn-danger text-xs px-3 py-1.5"
               >
                 {cancellingSchedule ? "Cancelling…" : "Cancel Schedule"}
               </button>
@@ -424,104 +457,182 @@ export default function AgentPanel({ employer }: { employer: string }) {
         </div>
       </div>
 
+      {/* ── Employee selection ── */}
+      {employees.length > 0 && (
+        <div className="card p-5 space-y-4">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div>
+              <div className="text-sm font-semibold" style={{ color: "var(--c-fg)" }}>
+                Select employees to pay
+              </div>
+              <div className="text-xs mt-0.5" style={{ color: "var(--c-dim)" }}>
+                Only checked employees will be included in the next payment run.
+              </div>
+            </div>
+            <div className="flex gap-3 text-xs">
+              <button
+                onClick={() => setSelectedIds(new Set(employees.map((e) => e.id)))}
+                style={{ color: "var(--c-primary)" }}
+              >
+                Select all
+              </button>
+              <span style={{ color: "var(--c-border-s)" }}>·</span>
+              <button
+                onClick={() => setSelectedIds(new Set())}
+                style={{ color: "var(--c-dim)" }}
+              >
+                Clear all
+              </button>
+            </div>
+          </div>
+
+          <div className="space-y-1.5">
+            {employees.map((emp) => {
+              const checked = selectedIds.has(emp.id);
+              return (
+                <label
+                  key={emp.id}
+                  className="flex items-center gap-3 px-3 py-2.5 rounded-xl cursor-pointer transition-colors"
+                  style={{
+                    background: checked ? "var(--c-bg-hover)" : "transparent",
+                    border: `1px solid ${checked ? "var(--c-border-s)" : "transparent"}`,
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={(e) => {
+                      const next = new Set(selectedIds);
+                      if (e.target.checked) next.add(emp.id);
+                      else next.delete(emp.id);
+                      setSelectedIds(next);
+                    }}
+                    className="w-4 h-4 flex-shrink-0 rounded"
+                    style={{ accentColor: "var(--c-primary)" }}
+                  />
+                  <span
+                    className="text-sm font-medium flex-1"
+                    style={{ color: checked ? "var(--c-fg)" : "var(--c-muted)" }}
+                  >
+                    {emp.name}
+                  </span>
+                  <span className="text-xs" style={{ color: "var(--c-dim)" }}>
+                    {emp.hourlyRate} 0G/hr
+                  </span>
+                </label>
+              );
+            })}
+          </div>
+
+          {selectedIds.size === 0 && (
+            <p className="text-xs text-amber-400 px-1">
+              No employees selected — payment will be skipped.
+            </p>
+          )}
+          {selectedIds.size > 0 && selectedIds.size < employees.length && (
+            <p className="text-xs px-1" style={{ color: "var(--c-dim)" }}>
+              {selectedIds.size} of {employees.length} employees selected.
+            </p>
+          )}
+        </div>
+      )}
+
       {/* ── Pay Now ── */}
-      <div className="card p-5 space-y-3 dark:bg-gray-900">
+      <div className="card p-5 space-y-3">
         <div className="flex flex-wrap gap-3 items-center justify-between">
           <div>
-            <div className="text-sm font-semibold dark:text-white">Pay Now</div>
-            <div className="text-xs text-ink-500 dark:text-gray-400">
+            <div className="text-sm font-semibold" style={{ color: "var(--c-fg)" }}>Pay Now</div>
+            <div className="text-xs" style={{ color: "var(--c-dim)" }}>
               Immediately execute payroll and send salaries from the pool.
             </div>
           </div>
           <div className="flex flex-wrap gap-2 items-center">
-            <select
-              className="input w-auto text-xs"
-              value={period}
-              onChange={(e) => setPeriod(e.target.value as "daily" | "weekly" | "monthly")}
-              disabled={payNowBusy}
-            >
+            <select className="text-xs" value={period}
+              onChange={(e) => setPeriod(e.target.value as typeof period)} disabled={payNowBusy}>
               <option value="daily">Daily</option>
               <option value="weekly">Weekly</option>
               <option value="monthly">Monthly</option>
             </select>
-            <select
-              className="input w-auto text-xs"
-              value={offset}
-              onChange={(e) => setOffset(Number(e.target.value) as 0 | -1)}
-              disabled={payNowBusy}
-            >
-              <option value={0}>{period === "daily" ? "Today" : period === "monthly" ? "This month" : "This week"}</option>
-              <option value={-1}>{period === "daily" ? "Yesterday" : period === "monthly" ? "Last month" : "Last week"}</option>
+            <select className="text-xs" value={offset}
+              onChange={(e) => setOffset(Number(e.target.value) as 0 | -1)} disabled={payNowBusy}>
+              <option value={0}>{periodLabel(period, 0)}</option>
+              <option value={-1}>{periodLabel(period, -1)}</option>
             </select>
             <button
               onClick={payNow}
-              disabled={payNowBusy || busy}
+              disabled={payNowBusy || busy || selectedIds.size === 0}
               className="btn-primary flex items-center gap-2"
             >
-              {payNowBusy ? <><Spinner />Processing…</> : "Pay Now"}
+              {payNowBusy
+                ? <><Spinner />Processing…</>
+                : selectedIds.size === 0
+                ? "No employees selected"
+                : selectedIds.size < employees.length
+                ? `Pay ${selectedIds.size} employee${selectedIds.size !== 1 ? "s" : ""}`
+                : "Pay Now"}
             </button>
           </div>
         </div>
         {payNowResult && (
-          <p className={`text-xs font-medium break-all rounded-lg px-3 py-2 ${
-            payNowResult.ok
-              ? "bg-brand-50 text-brand-700 dark:bg-brand-900/20 dark:text-brand-300"
-              : "bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-400"
-          }`}>
+          <p className={`text-xs font-medium break-all rounded-xl px-3 py-2 ${payNowResult.ok ? "" : "text-red-400"}`}
+            style={payNowResult.ok
+              ? { color: "var(--c-primary)", background: "var(--c-primary-glow)", border: "1px solid var(--c-border-s)" }
+              : { background: "rgba(239,68,68,0.06)", border: "1px solid rgba(239,68,68,0.2)" }
+            }>
             {payNowResult.text}
           </p>
         )}
       </div>
 
-      {/* ── Run controls ── */}
-      <div className="card p-5 flex flex-wrap gap-3 items-center justify-between dark:bg-gray-900">
+      {/* ── Run agent ── */}
+      <div className="card p-5 flex flex-wrap gap-3 items-center justify-between">
         <div>
-          <div className="text-sm font-semibold dark:text-white">Manual run</div>
-          <div className="text-xs text-ink-500 dark:text-gray-400">
+          <div className="text-sm font-semibold" style={{ color: "var(--c-fg)" }}>Manual run</div>
+          <div className="text-xs" style={{ color: "var(--c-dim)" }}>
             Reads 0G Storage records, enforces rules, pays from pool only.
             Your wallet pays gas; vault pays salaries.
           </div>
         </div>
         <div className="flex flex-wrap gap-2 items-center">
-          <select
-            className="input w-auto text-xs"
-            value={period}
-            onChange={(e) => setPeriod(e.target.value as "daily" | "weekly" | "monthly")}
-            disabled={busy}
-          >
+          <select className="text-xs" value={period}
+            onChange={(e) => setPeriod(e.target.value as typeof period)} disabled={busy}>
             <option value="daily">Daily payout</option>
             <option value="weekly">Weekly payout</option>
             <option value="monthly">Monthly payout</option>
           </select>
-          <select
-            className="input w-auto text-xs"
-            value={offset}
-            onChange={(e) => setOffset(Number(e.target.value) as 0 | -1)}
-            disabled={busy}
-          >
-            <option value={0}>{period === "daily" ? "Today" : period === "monthly" ? "This month" : "This week"}</option>
-            <option value={-1}>{period === "daily" ? "Yesterday" : period === "monthly" ? "Last month" : "Last week"}</option>
+          <select className="text-xs" value={offset}
+            onChange={(e) => setOffset(Number(e.target.value) as 0 | -1)} disabled={busy}>
+            <option value={0}>{periodLabel(period, 0)}</option>
+            <option value={-1}>{periodLabel(period, -1)}</option>
           </select>
-          <button onClick={runAgent} disabled={busy} className="btn-primary">
-            {busy ? (
-              <span className="flex items-center gap-2"><Spinner />Running…</span>
-            ) : "Run agent"}
+          <button
+            onClick={runAgent}
+            disabled={busy || selectedIds.size === 0}
+            className="btn-primary"
+          >
+            {busy
+              ? <span className="flex items-center gap-2"><Spinner />Running…</span>
+              : selectedIds.size === 0
+              ? "No employees selected"
+              : selectedIds.size < employees.length
+              ? `Run for ${selectedIds.size} employee${selectedIds.size !== 1 ? "s" : ""}`
+              : "Run agent"}
           </button>
         </div>
       </div>
 
       {/* ── Chat log ── */}
-      <div className="card overflow-hidden flex flex-col dark:bg-gray-900" style={{ minHeight: 480 }}>
-        <div className="px-5 py-3 border-b border-slate-100 dark:border-gray-800 flex items-center gap-2">
-          <div className="w-2 h-2 rounded-full bg-brand-500 animate-pulse" />
-          <span className="text-xs font-semibold uppercase tracking-wide text-ink-500 dark:text-gray-400">
+      <div className="card overflow-hidden flex flex-col" style={{ minHeight: 480 }}>
+        <div className="px-5 py-3 flex items-center gap-2" style={{ borderBottom: "1px solid var(--c-border)" }}>
+          <div className="w-2 h-2 rounded-full animate-pulse" style={{ background: "var(--c-primary)" }} />
+          <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--c-dim)" }}>
             Agent log
           </span>
         </div>
         <div className="flex-1 overflow-y-auto p-5 space-y-4">
           {messages.map((m, i) => <Bubble key={i} msg={m} price={price} />)}
           {busy && (
-            <div className="flex items-center gap-2 text-xs text-ink-500 dark:text-gray-400">
+            <div className="flex items-center gap-2 text-xs" style={{ color: "var(--c-dim)" }}>
               <Spinner />Agent working…
             </div>
           )}
@@ -531,9 +642,9 @@ export default function AgentPanel({ employer }: { employer: string }) {
 
       {/* ── Payroll breakdown ── */}
       {report && report.lines.some((l) => l.hoursWorked > 0) && (
-        <div className="card p-6 dark:bg-gray-900">
+        <div className="card p-6">
           <div className="flex items-center justify-between mb-4">
-            <div className="text-sm font-semibold dark:text-white">
+            <div className="text-sm font-semibold" style={{ color: "var(--c-fg)" }}>
               Payroll breakdown ·{" "}
               {new Date(report.weekStart).toLocaleDateString()}
               {report.weekStart !== report.weekEnd
@@ -542,15 +653,16 @@ export default function AgentPanel({ employer }: { employer: string }) {
             </div>
             <a
               href={`/api/payroll/export?employer=${employer}&weekOffset=${offset}`}
-              className="text-xs text-brand-600 dark:text-brand-400 hover:underline"
+              className="text-xs transition-colors"
+              style={{ color: "var(--c-primary)" }}
             >
               Export CSV
             </a>
           </div>
-          <table className="w-full text-sm">
-            <thead className="text-left text-xs uppercase text-ink-500 dark:text-gray-400 border-b border-slate-100 dark:border-gray-800">
+          <table className="table-zg w-full">
+            <thead>
               <tr>
-                <th className="pb-3">Employee</th>
+                <th>Employee</th>
                 <th>Wallet</th>
                 <th>Hours</th>
                 <th>Rate</th>
@@ -558,38 +670,37 @@ export default function AgentPanel({ employer }: { employer: string }) {
                 <th className="text-right">Status</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-50 dark:divide-gray-800">
+            <tbody>
               {report.lines.map((l) => (
                 <tr key={l.employeeId}>
-                  <td className="py-3 font-medium dark:text-white">{l.employeeName}</td>
-                  <td className="font-mono text-xs text-ink-500 dark:text-gray-400">{short(l.wallet)}</td>
-                  <td className="dark:text-gray-300">{l.hoursWorked.toFixed(2)}h</td>
-                  <td className="text-ink-400 dark:text-gray-500">{l.hourlyRate} 0G/hr</td>
-                  <td className="text-right font-semibold dark:text-white">
-                    {fmt0G(l.amountWei)}
+                  <td className="font-medium">{l.employeeName}</td>
+                  <td className="font-mono text-xs" style={{ color: "var(--c-dim)" }}>{short(l.wallet)}</td>
+                  <td style={{ color: "var(--c-muted)" }}>{l.hoursWorked.toFixed(2)}h</td>
+                  <td className="text-xs" style={{ color: "var(--c-dim)" }}>{l.hourlyRate} 0G/hr</td>
+                  <td className="text-right">
+                    <span className="font-semibold" style={{ color: "var(--c-fg)" }}>{fmt0G(l.amountWei)}</span>
                     {tokenToUSD(Number(BigInt(l.amountWei)) / 1e18, price) && (
-                      <div className="text-xs font-normal text-ink-400 dark:text-gray-500">
+                      <div className="text-xs font-normal" style={{ color: "var(--c-dim)" }}>
                         ≈{tokenToUSD(Number(BigInt(l.amountWei)) / 1e18, price)}
                       </div>
                     )}
                   </td>
                   <td className="text-right">
                     {BigInt(l.amountWei) > 0n
-                      ? <span className="pill bg-brand-50 text-brand-700 dark:bg-brand-900/40 dark:text-brand-300">Paid</span>
-                      : <span className="pill bg-slate-100 text-ink-500 dark:bg-gray-800 dark:text-gray-400">No hours</span>}
+                      ? <span className="pill-cyan text-xs">Paid</span>
+                      : <span className="pill text-xs" style={{ background: "var(--c-bg-hover)", color: "var(--c-muted)", border: "1px solid var(--c-border)" }}>No hours</span>
+                    }
                   </td>
                 </tr>
               ))}
             </tbody>
-            <tfoot className="border-t-2 border-slate-200 dark:border-gray-700">
-              <tr>
-                <td colSpan={4} className="pt-3 text-xs uppercase text-ink-500 dark:text-gray-400 font-semibold">
-                  Total
-                </td>
-                <td className="pt-3 text-right font-bold dark:text-white">
+            <tfoot>
+              <tr style={{ borderTop: "1px solid var(--c-border)" }}>
+                <td colSpan={4} className="pt-3 text-xs uppercase font-semibold" style={{ color: "var(--c-dim)" }}>Total</td>
+                <td className="pt-3 text-right font-bold" style={{ color: "var(--c-fg)" }}>
                   {fmt0G(report.totalPaidWei)}
                   {tokenToUSD(Number(BigInt(report.totalPaidWei)) / 1e18, price) && (
-                    <div className="text-xs font-normal text-ink-400 dark:text-gray-500">
+                    <div className="text-xs font-normal" style={{ color: "var(--c-dim)" }}>
                       ≈{tokenToUSD(Number(BigInt(report.totalPaidWei)) / 1e18, price)}
                     </div>
                   )}
@@ -604,38 +715,45 @@ export default function AgentPanel({ employer }: { employer: string }) {
   );
 }
 
-/* ── Message bubbles ── */
+/* ── Message bubble ── */
 function Bubble({ msg, price }: { msg: Message; price: number | null }) {
   if (msg.from === "system") {
     return (
-      <div className="text-center text-xs text-ink-400 dark:text-gray-500 py-1">
-        {msg.text}
-      </div>
+      <div className="text-center text-xs py-1" style={{ color: "var(--c-dim)" }}>{msg.text}</div>
     );
   }
   if (msg.from === "tx") {
     return (
       <div className="flex gap-3">
-        <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center flex-shrink-0 text-sm">🔗</div>
+        <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 text-sm"
+          style={{ background: "var(--c-bg-hover)", border: "1px solid var(--c-border-s)" }}>
+          🔗
+        </div>
         <div className="flex-1">
-          <div className="rounded-2xl rounded-tl-sm bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-900 px-4 py-3 text-sm dark:text-blue-200">
+          <div className="rounded-2xl rounded-tl-sm px-4 py-3 text-sm"
+            style={{ color: "var(--c-primary)", background: "var(--c-primary-glow)", border: "1px solid var(--c-border-s)" }}>
             {msg.text}
             {msg.txHash && (
-              <div className="mt-1 font-mono text-xs text-blue-600 dark:text-blue-400 break-all">{msg.txHash}</div>
+              <div className="mt-1 font-mono text-xs break-all" style={{ color: "var(--c-muted)" }}>{msg.txHash}</div>
             )}
           </div>
-          <div className="text-xs text-ink-400 dark:text-gray-500 mt-1 ml-2">{new Date(msg.ts).toLocaleTimeString()}</div>
+          <div className="text-xs mt-1 ml-2" style={{ color: "var(--c-dim)" }}>{new Date(msg.ts).toLocaleTimeString()}</div>
         </div>
       </div>
     );
   }
   return (
     <div className="flex gap-3">
-      <div className="w-8 h-8 rounded-full bg-gradient-to-br from-brand-500 to-emerald-700 flex items-center justify-center flex-shrink-0 text-white text-xs font-bold flex-shrink-0">
+      <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 text-white text-xs font-bold"
+        style={{
+          background: "linear-gradient(135deg, #9200e1 0%, #dd23bb 100%)",
+          boxShadow: "0 0 12px rgba(146,0,225,0.3)",
+        }}>
         AI
       </div>
       <div className="flex-1">
-        <div className="rounded-2xl rounded-tl-sm bg-slate-50 dark:bg-gray-800 border border-slate-100 dark:border-gray-700 px-4 py-3 text-sm whitespace-pre-wrap dark:text-gray-100">
+        <div className="rounded-2xl rounded-tl-sm px-4 py-3 text-sm whitespace-pre-wrap"
+          style={{ color: "var(--c-muted)", background: "var(--c-bg-hover)", border: "1px solid var(--c-border)" }}>
           {msg.text}
           {msg.lines && msg.lines.length > 0 && (
             <div className="mt-3 space-y-1.5">
@@ -643,12 +761,13 @@ function Bubble({ msg, price }: { msg: Message; price: number | null }) {
                 const usd = tokenToUSD(Number(BigInt(l.amountWei)) / 1e18, price);
                 return (
                   <div key={l.employeeId}
-                    className="flex justify-between text-xs bg-white dark:bg-gray-900 border border-slate-100 dark:border-gray-700 rounded-lg px-3 py-2">
-                    <span className="font-medium dark:text-white">{l.employeeName}</span>
-                    <span className="text-ink-500 dark:text-gray-400">{l.hoursWorked.toFixed(2)}h</span>
-                    <span className="font-semibold text-brand-700 dark:text-brand-400">
+                    className="flex justify-between text-xs rounded-xl px-3 py-2"
+                    style={{ background: "var(--c-bg-card)", border: "1px solid var(--c-border)" }}>
+                    <span className="font-medium" style={{ color: "var(--c-fg)" }}>{l.employeeName}</span>
+                    <span style={{ color: "var(--c-dim)" }}>{l.hoursWorked.toFixed(2)}h</span>
+                    <span className="font-semibold" style={{ color: "var(--c-primary)" }}>
                       {fmt0G(l.amountWei)}
-                      {usd && <span className="ml-1 font-normal text-ink-400 dark:text-gray-500">≈{usd}</span>}
+                      {usd && <span className="ml-1 font-normal" style={{ color: "var(--c-dim)" }}>≈{usd}</span>}
                     </span>
                   </div>
                 );
@@ -656,7 +775,7 @@ function Bubble({ msg, price }: { msg: Message; price: number | null }) {
             </div>
           )}
         </div>
-        <div className="text-xs text-ink-400 dark:text-gray-500 mt-1 ml-2">{new Date(msg.ts).toLocaleTimeString()}</div>
+        <div className="text-xs mt-1 ml-2" style={{ color: "var(--c-dim)" }}>{new Date(msg.ts).toLocaleTimeString()}</div>
       </div>
     </div>
   );

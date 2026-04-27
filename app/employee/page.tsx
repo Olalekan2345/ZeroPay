@@ -29,7 +29,7 @@ type Payload = {
 export default function EmployeePage() {
   const { address, isConnected } = useAccount();
   const [data, setData] = useState<Payload | null>(null);
-  const [err, setErr] = useState<string | null>(null);
+  const [err, setErr]   = useState<string | null>(null);
 
   useEffect(() => {
     if (!address) return;
@@ -46,100 +46,114 @@ export default function EmployeePage() {
 
   if (!isConnected) {
     return (
-      <div className="card p-10 text-center">
-        <div className="text-xl font-semibold">Employee portal</div>
-        <p className="text-ink-500 text-sm mt-2 max-w-md mx-auto">
-          Connect the wallet that your employer registered to view your hours
-          and payment history.
-        </p>
+      <div className="max-w-md mx-auto mt-20">
+        <div className="card p-10 text-center space-y-4">
+          <div
+            className="w-14 h-14 rounded-2xl mx-auto flex items-center justify-center text-2xl"
+            style={{
+              background: "linear-gradient(135deg, #9200e1 0%, #dd23bb 100%)",
+              boxShadow: "0 0 20px rgba(146,0,225,0.3)",
+            }}
+          >
+            👤
+          </div>
+          <div>
+            <div className="text-xl font-semibold" style={{ color: "var(--c-fg)" }}>Employee portal</div>
+            <p className="text-sm mt-2 leading-relaxed" style={{ color: "var(--c-muted)" }}>
+              Connect the wallet your employer registered to view your hours and payment history.
+            </p>
+          </div>
+        </div>
       </div>
     );
   }
 
   if (err) {
     return (
-      <div className="card p-10 text-center">
-        <div className="text-xl font-semibold">Not registered</div>
-        <p className="text-ink-500 text-sm mt-2">
-          This wallet isn&apos;t registered as an employee. Ask your employer
-          to add{" "}
-          <span className="font-mono">{short(address)}</span>.
-        </p>
+      <div className="max-w-md mx-auto mt-20">
+        <div className="card p-10 text-center space-y-4">
+          <div className="w-14 h-14 rounded-2xl mx-auto flex items-center justify-center text-2xl"
+            style={{ background: "rgba(220,38,38,0.08)", border: "1px solid rgba(220,38,38,0.2)" }}>
+            ⚠️
+          </div>
+          <div>
+            <div className="text-xl font-semibold" style={{ color: "var(--c-fg)" }}>Not registered</div>
+            <p className="text-sm mt-2" style={{ color: "var(--c-muted)" }}>
+              Wallet{" "}
+              <span className="font-mono text-xs px-1.5 py-0.5 rounded"
+                style={{ background: "var(--c-bg-hover)", color: "var(--c-fg)" }}>
+                {short(address)}
+              </span>{" "}
+              isn&apos;t registered as an employee. Ask your employer to add you.
+            </p>
+          </div>
+        </div>
       </div>
     );
   }
 
   if (!data) {
-    return <div className="card p-10 text-center text-ink-500">Loading…</div>;
+    return (
+      <div className="card p-10 text-center text-sm animate-pulse" style={{ color: "var(--c-dim)" }}>
+        Loading…
+      </div>
+    );
   }
 
   const sorted = [...data.attendance].sort((a, b) => b.clockIn - a.clockIn);
 
   return (
     <div className="space-y-6">
+      {/* Header */}
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight">
+        <h1 className="text-2xl font-bold tracking-tight" style={{ color: "var(--c-fg)" }}>
           Hi {data.employee.name.split(" ")[0]} 👋
         </h1>
-        <p className="text-ink-500 text-sm">
-          {data.businessName ? `Employed at ${data.businessName}. ` : ""}
-          Your hours and payments, read-only. Records are stored on 0G Storage.
+        <p className="text-sm mt-1" style={{ color: "var(--c-muted)" }}>
+          {data.businessName ? `Employed at ${data.businessName} · ` : ""}
+          Read-only view — records on 0G Storage.
         </p>
       </div>
 
+      {/* Stat cards */}
       <div className="grid sm:grid-cols-3 gap-4">
-        <Stat
-          label="This week — hours"
-          value={`${data.thisWeek.hoursWorked.toFixed(2)} h`}
-        />
-        <Stat
-          label="This week — estimated"
-          value={fmt0G(data.thisWeek.amountWei)}
-          tone="ok"
-        />
-        <Stat label="Hourly rate" value={`${data.employee.hourlyRate} 0G/hr`} />
+        <StatCard label="This week — hours"     value={`${data.thisWeek.hoursWorked.toFixed(2)} h`} />
+        <StatCard label="This week — estimated" value={fmt0G(data.thisWeek.amountWei)} accent />
+        <StatCard label="Hourly rate"           value={`${data.employee.hourlyRate} 0G/hr`} />
       </div>
 
-      <div className="card p-6">
-        <div className="text-sm font-semibold">My attendance</div>
-        <div className="text-xs text-ink-500">Read-only — employer-logged.</div>
-        <div className="mt-4 overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="text-left text-xs uppercase text-ink-500">
+      {/* Attendance */}
+      <div className="card p-6 space-y-4">
+        <div>
+          <div className="text-sm font-semibold" style={{ color: "var(--c-fg)" }}>My attendance</div>
+          <div className="text-xs mt-0.5" style={{ color: "var(--c-dim)" }}>Read-only — logged by employer.</div>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="table-zg w-full">
+            <thead>
               <tr>
-                <th className="py-2">Clock in</th>
+                <th>Clock in</th>
                 <th>Clock out</th>
                 <th>Paid hours</th>
-                <th>Storage</th>
+                <th>Storage ref</th>
               </tr>
             </thead>
             <tbody>
               {sorted.length === 0 && (
                 <tr>
-                  <td colSpan={4} className="py-6 text-center text-ink-500">
-                    No attendance yet.
-                  </td>
+                  <td colSpan={4} className="py-8 text-center" style={{ color: "var(--c-dim)" }}>No attendance yet.</td>
                 </tr>
               )}
               {sorted.slice(0, 40).map((r) => (
-                <tr key={r.id} className="border-t border-slate-100">
-                  <td className="py-2">{dateTime(r.clockIn)}</td>
+                <tr key={r.id}>
+                  <td>{dateTime(r.clockIn)}</td>
                   <td>
-                    {r.clockOut ? (
-                      dateTime(r.clockOut)
-                    ) : (
-                      <span className="pill bg-amber-100 text-amber-700">
-                        Open
-                      </span>
+                    {r.clockOut ? dateTime(r.clockOut) : (
+                      <span className="pill-amber">Open</span>
                     )}
                   </td>
-                  <td>
-                    {r.clockOut ? paidHoursForEntry(r).toFixed(2) : "—"}
-                  </td>
-                  <td
-                    className="font-mono text-xs text-ink-500 truncate max-w-[160px]"
-                    title={r.storageRef}
-                  >
+                  <td>{r.clockOut ? paidHoursForEntry(r).toFixed(2) : "—"}</td>
+                  <td className="font-mono text-xs truncate max-w-[160px]" style={{ color: "var(--c-dim)" }} title={r.storageRef}>
                     {r.storageRef ? r.storageRef.slice(0, 16) + "…" : "—"}
                   </td>
                 </tr>
@@ -149,16 +163,17 @@ export default function EmployeePage() {
         </div>
       </div>
 
-      <div className="card p-6">
-        <div className="text-sm font-semibold">Payment history</div>
-        <div className="text-xs text-ink-500">
-          Paid each Saturday from the employer payroll pool.
+      {/* Payment history */}
+      <div className="card p-6 space-y-4">
+        <div>
+          <div className="text-sm font-semibold" style={{ color: "var(--c-fg)" }}>Payment history</div>
+          <div className="text-xs mt-0.5" style={{ color: "var(--c-dim)" }}>Paid from the employer payroll pool on schedule.</div>
         </div>
-        <div className="mt-4 overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="text-left text-xs uppercase text-ink-500">
+        <div className="overflow-x-auto">
+          <table className="table-zg w-full">
+            <thead>
               <tr>
-                <th className="py-2">Week of</th>
+                <th>Period</th>
                 <th>Hours</th>
                 <th>Amount</th>
                 <th>Tx</th>
@@ -167,21 +182,15 @@ export default function EmployeePage() {
             <tbody>
               {data.history.length === 0 && (
                 <tr>
-                  <td colSpan={4} className="py-6 text-center text-ink-500">
-                    No payments yet.
-                  </td>
+                  <td colSpan={4} className="py-8 text-center" style={{ color: "var(--c-dim)" }}>No payments yet.</td>
                 </tr>
               )}
               {data.history.map((h, i) => (
-                <tr key={i} className="border-t border-slate-100">
-                  <td className="py-2">
-                    {new Date(h.weekStart).toLocaleDateString()}
-                  </td>
+                <tr key={i}>
+                  <td>{new Date(h.weekStart).toLocaleDateString()}</td>
                   <td>{h.hoursWorked.toFixed(2)}</td>
-                  <td className="font-medium">{fmt0G(h.amountWei)}</td>
-                  <td className="font-mono text-xs">
-                    {h.txHash ? short(h.txHash) : "—"}
-                  </td>
+                  <td className="font-semibold" style={{ color: "var(--c-primary)" }}>{fmt0G(h.amountWei)}</td>
+                  <td className="font-mono text-xs" style={{ color: "var(--c-dim)" }}>{h.txHash ? short(h.txHash) : "—"}</td>
                 </tr>
               ))}
             </tbody>
@@ -192,21 +201,18 @@ export default function EmployeePage() {
   );
 }
 
-function Stat({
-  label,
-  value,
-  tone,
-}: {
-  label: string;
-  value: string;
-  tone?: "ok";
-}) {
-  const toneCls =
-    tone === "ok" ? "bg-brand-50 text-brand-700" : "bg-slate-50 text-ink-900";
+function StatCard({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
   return (
-    <div className={`rounded-xl p-5 ${toneCls}`}>
-      <div className="text-xs uppercase tracking-wide opacity-70">{label}</div>
-      <div className="text-2xl font-semibold mt-1">{value}</div>
+    <div className="card p-5 transition-all duration-200"
+      onMouseEnter={(e) => (e.currentTarget.style.background = "var(--c-bg-hover)")}
+      onMouseLeave={(e) => (e.currentTarget.style.background = "var(--c-bg-card)")}>
+      <div className="text-xs uppercase tracking-wide font-medium" style={{ color: "var(--c-dim)" }}>{label}</div>
+      <div
+        className="text-2xl font-bold mt-2"
+        style={accent ? { color: "var(--c-primary)" } : { color: "var(--c-fg)" }}
+      >
+        {value}
+      </div>
     </div>
   );
 }

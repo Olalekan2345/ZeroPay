@@ -27,6 +27,28 @@ export type TenantSettings = {
   createdAt: number;
 };
 
+/** Read the operator private key — stored in a gitignored file, never in settings.json. */
+export async function getOperatorKey(employer: string): Promise<string | null> {
+  try {
+    const key = await fs.readFile(
+      path.join(tenantDir(normEmp(employer)), "operator.key"),
+      "utf8",
+    );
+    return key.trim() || null;
+  } catch {
+    return null;
+  }
+}
+
+export async function saveOperatorKey(employer: string, key: string) {
+  await ensure(employer);
+  await fs.writeFile(
+    path.join(tenantDir(normEmp(employer)), "operator.key"),
+    key,
+    { mode: 0o600 },
+  );
+}
+
 function normEmp(addr: string): string {
   if (!/^0x[a-fA-F0-9]{40}$/.test(addr)) throw new Error("bad employer address");
   return addr.toLowerCase();

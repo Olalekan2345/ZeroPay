@@ -33,39 +33,41 @@ export default function BusinessHeader({ employer }: { employer: string }) {
   return (
     <div className="flex flex-wrap items-start justify-between gap-4">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight dark:text-white">
+        <h1 className="text-2xl font-bold tracking-tight" style={{ color: "var(--c-fg)" }}>
           {saved || "My Business"}
         </h1>
-        <p className="text-ink-500 dark:text-gray-400 text-sm mt-0.5">
+        <p className="text-sm mt-1 flex items-center gap-1.5" style={{ color: "var(--c-muted)" }}>
+          <span
+            className="inline-block w-1.5 h-1.5 rounded-full flex-shrink-0"
+            style={{ background: "linear-gradient(135deg, #9200e1, #dd23bb)" }}
+          />
           Employer tenant ·{" "}
-          <span className="font-mono">{short(employer)}</span>
+          <span className="font-mono" style={{ color: "var(--c-muted)" }}>{short(employer)}</span>
         </p>
       </div>
 
       <div className="flex flex-wrap gap-2 items-center">
-        {/* Share employee link */}
         <ShareLink />
 
-        {/* Rename business */}
         {editing ? (
           <div className="flex gap-2">
             <input
-              className="input w-48"
+              className="input w-44 text-sm"
               placeholder="Business name"
               value={name}
               onChange={(e) => setName(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && save()}
               autoFocus
             />
-            <button onClick={save} disabled={saving} className="btn-primary text-xs">
+            <button onClick={save} disabled={saving} className="btn-primary text-xs px-3 py-1.5">
               {saving ? "Saving…" : "Save"}
             </button>
-            <button onClick={() => setEditing(false)} className="btn-ghost text-xs">
+            <button onClick={() => setEditing(false)} className="btn-ghost text-xs px-3 py-1.5">
               Cancel
             </button>
           </div>
         ) : (
-          <button onClick={() => setEditing(true)} className="btn-ghost text-xs">
+          <button onClick={() => setEditing(true)} className="btn-ghost text-xs px-3 py-1.5">
             {saved ? "Rename" : "Name business"}
           </button>
         )}

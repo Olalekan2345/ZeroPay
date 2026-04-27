@@ -13,7 +13,10 @@ function employerFrom(req: Request): string | null {
 export async function GET(req: Request) {
   const emp = employerFrom(req);
   if (!emp) return NextResponse.json({ error: "employer required" }, { status: 400 });
-  return NextResponse.json(await getSettings(emp));
+  const settings = await getSettings(emp);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { operatorKey: _, ...safe } = settings;
+  return NextResponse.json(safe);
 }
 
 export async function POST(req: Request) {

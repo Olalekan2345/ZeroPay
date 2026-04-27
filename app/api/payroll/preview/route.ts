@@ -16,11 +16,18 @@ export async function GET(req: Request) {
   const rawPeriod = searchParams.get("period");
   const period = (rawPeriod === "daily" ? "daily" : rawPeriod === "monthly" ? "monthly" : "weekly") as "daily" | "weekly" | "monthly";
 
-  const [employees, attendance, poolAddress] = await Promise.all([
+  const rawIds = searchParams.get("employeeIds");
+  const employeeIds = rawIds ? rawIds.split(",").filter(Boolean) : null;
+
+  const [allEmployees, attendance, poolAddress] = await Promise.all([
     listEmployees(g.employer),
     listAttendance(g.employer),
     resolvePoolAddress(g.employer),
   ]);
+
+  const employees = employeeIds
+    ? allEmployees.filter((e) => employeeIds.includes(e.id))
+    : allEmployees;
 
   let poolBalanceWei = 0n;
   if (poolAddress) {

@@ -19,7 +19,7 @@ export default function WalletButton() {
       <button
         onClick={() => injected && connect({ connector: injected })}
         disabled={isPending}
-        className="btn-primary ml-2"
+        className="btn-primary ml-1 px-5 py-2 rounded-xl text-sm"
       >
         {isPending ? "Connecting…" : "Connect wallet"}
       </button>
@@ -28,16 +28,27 @@ export default function WalletButton() {
 
   const wrongNet = chainId !== zgGalileo.id;
   return (
-    <div className="flex items-center gap-2 ml-2">
+    <div className="flex items-center gap-2 ml-1">
       {wrongNet && (
-        <button className="btn-ghost text-xs" onClick={() => switchChain({ chainId: zgGalileo.id })}>
+        <button
+          className="btn-ghost text-xs px-3 py-1.5"
+          onClick={() => switchChain({ chainId: zgGalileo.id })}
+        >
           Switch to 0G
         </button>
       )}
-      <span className="pill bg-slate-100 dark:bg-gray-800 text-ink-900 dark:text-gray-200 font-mono" title={address}>
+      <span
+        className="pill font-mono text-xs"
+        style={{
+          color: "var(--c-primary)",
+          background: "rgba(146,0,225,0.08)",
+          border: "1px solid var(--c-border-s)",
+        }}
+        title={address}
+      >
         {short(address)}
       </span>
-      <button onClick={() => disconnect()} className="btn-ghost text-xs">
+      <button onClick={() => disconnect()} className="btn-ghost text-xs px-3 py-1.5">
         Disconnect
       </button>
     </div>

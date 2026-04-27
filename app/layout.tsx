@@ -15,52 +15,79 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
-        {/* Prevent flash of wrong theme */}
+        {/* Google Fonts — Plus Jakarta Sans (closest to Regola Pro) + Geist Mono */}
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        <link
+          href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400&family=Geist+Mono:wght@400;500&display=swap"
+          rel="stylesheet"
+        />
+        {/* Theme flash prevention */}
         <script
           dangerouslySetInnerHTML={{
-            __html: `
-              try {
-                var t = localStorage.getItem('theme');
-                var d = t ? t === 'dark'
-                  : window.matchMedia('(prefers-color-scheme: dark)').matches;
-                if (d) document.documentElement.classList.add('dark');
-              } catch(e){}
-            `,
+            __html: `try{var t=localStorage.getItem('theme');var d=t?t==='dark':window.matchMedia('(prefers-color-scheme: dark)').matches;if(d)document.documentElement.classList.add('dark');}catch(e){}`,
           }}
         />
       </head>
-      <body className="dark:bg-gray-950 dark:text-gray-100">
+      <body style={{ background: "var(--c-bg)", color: "var(--c-fg)" }}>
         <Providers>
-          <header className="sticky top-0 z-30 backdrop-blur border-b
-            bg-white/90 border-slate-100
-            dark:bg-gray-900/90 dark:border-gray-800">
-            <div className="max-w-6xl mx-auto px-6 h-14 flex items-center justify-between">
-              <Link href="/" className="flex items-center gap-2 font-semibold dark:text-white">
-                <span className="inline-block w-6 h-6 rounded-lg bg-gradient-to-br from-brand-500 to-emerald-700 flex-shrink-0" />
-                ZeroPay
-                <span className="pill bg-brand-50 text-brand-700 dark:bg-brand-900/40 dark:text-brand-300 ml-1">
+          {/* Mascot watermark */}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/mascot.jpg"
+            alt=""
+            aria-hidden="true"
+            className="mascot-watermark"
+          />
+
+          {/* Header */}
+          <header className="sticky top-0 z-30 border-b">
+            <div className="max-w-6xl mx-auto px-6 h-14 flex items-center justify-between relative z-10">
+              {/* Logo */}
+              <Link href="/" className="flex items-center gap-2.5 group">
+                <span
+                  className="inline-flex w-7 h-7 rounded-lg items-center justify-center
+                    text-white text-sm font-bold flex-shrink-0 shadow-glow"
+                  style={{ background: "linear-gradient(135deg, #9200e1 0%, #dd23bb 100%)" }}
+                >
+                  Z
+                </span>
+                <span className="font-bold text-[var(--c-fg)]">ZeroPay</span>
+                <span className="pill-purple hidden sm:inline-flex ml-0.5">
                   0G Galileo
                 </span>
               </Link>
-              <nav className="flex items-center gap-1 text-sm">
-                <Link href="/employer"
-                  className="px-3 py-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-gray-800 dark:text-gray-200">
+
+              {/* Nav */}
+              <nav className="flex items-center gap-0.5 text-sm font-medium">
+                <Link
+                  href="/employer"
+                  className="nav-link px-3 py-1.5 rounded-lg transition-all duration-150 hover:bg-[var(--c-bg-hover)]"
+                >
                   Employer
                 </Link>
-                <Link href="/employee"
-                  className="px-3 py-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-gray-800 dark:text-gray-200">
+                <Link
+                  href="/employee"
+                  className="nav-link px-3 py-1.5 rounded-lg transition-all duration-150 hover:bg-[var(--c-bg-hover)]"
+                >
                   Employee
                 </Link>
                 <ThemeToggle />
-                <WalletButton />
+                <div className="ml-1">
+                  <WalletButton />
+                </div>
               </nav>
             </div>
           </header>
 
-          <main className="max-w-6xl mx-auto px-6 py-8">{children}</main>
+          <main className="max-w-6xl mx-auto px-6 py-8 relative z-10">{children}</main>
 
-          <footer className="max-w-6xl mx-auto px-6 py-10 text-xs text-ink-500 dark:text-gray-500">
-            ZeroPay — records on 0G Storage · payments from an employer-funded pool on 0G Galileo testnet.
+          <footer
+            className="max-w-6xl mx-auto px-6 py-10 text-xs border-t relative z-10"
+            style={{ color: "var(--c-dim)", borderColor: "var(--c-border)" }}
+          >
+            ZeroPay — attendance &amp; payroll records on 0G Storage ·
+            salary payments from employer-funded SecuredVault contracts on 0G Galileo testnet.
           </footer>
         </Providers>
       </body>

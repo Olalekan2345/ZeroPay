@@ -25,7 +25,6 @@ export default function EmployeesPanel({ employer }: { employer: string }) {
   }
   useEffect(() => { refresh(); }, [employer]);
 
-  /* ── Add employee ── */
   async function add(e: React.FormEvent) {
     e.preventDefault();
     setBusy("add"); setMsg(null);
@@ -48,14 +47,12 @@ export default function EmployeesPanel({ employer }: { employer: string }) {
     } finally { setBusy(null); }
   }
 
-  /* ── Start editing ── */
   function startEdit(r: Employee) {
     setEditId(r.id);
     setDraft({ name: r.name, hourlyRate: String(r.hourlyRate) });
     setMsg(null);
   }
 
-  /* ── Save edit ── */
   async function saveEdit(id: string) {
     setBusy(`edit:${id}`); setMsg(null);
     try {
@@ -64,7 +61,6 @@ export default function EmployeesPanel({ employer }: { employer: string }) {
         throw new Error("Hourly rate must be a positive number.");
       if (!draft.name.trim())
         throw new Error("Name cannot be empty.");
-
       const res = await fetch(`/api/employees?employer=${employer}`, {
         method: "PATCH",
         headers: { "content-type": "application/json" },
@@ -79,14 +75,12 @@ export default function EmployeesPanel({ employer }: { employer: string }) {
     } finally { setBusy(null); }
   }
 
-  /* ── Remove ── */
   async function remove(id: string) {
     if (!confirm("Remove this employee? They can register as an employer afterwards.")) return;
     await fetch(`/api/employees?employer=${employer}&id=${id}`, { method: "DELETE" });
     await refresh();
   }
 
-  /* ── Clock ── */
   async function clock(employeeId: string, action: "in" | "out") {
     setBusy(`${employeeId}:${action}`); setMsg(null);
     try {
@@ -107,11 +101,10 @@ export default function EmployeesPanel({ employer }: { employer: string }) {
     attendance.find((a) => a.employeeId === id && !a.clockOut);
 
   return (
-    <div className="card p-6 space-y-6 dark:bg-gray-900">
-      {/* Header */}
+    <div className="card p-6 space-y-6">
       <div>
-        <div className="text-base font-semibold dark:text-white">Team members</div>
-        <div className="text-xs text-ink-500 dark:text-gray-400 mt-0.5">
+        <div className="text-base font-semibold" style={{ color: "var(--c-fg)" }}>Team members</div>
+        <div className="text-xs mt-0.5" style={{ color: "var(--c-dim)" }}>
           Clock-in allowed Mon–Fri, 09:00–17:00 only. Edit name or rate anytime.
         </div>
       </div>
@@ -121,36 +114,27 @@ export default function EmployeesPanel({ employer }: { employer: string }) {
         <div className="grid sm:grid-cols-3 gap-3">
           <div>
             <label className="label">Full name</label>
-            <input
-              className="input"
-              value={form.name}
+            <input className="input" value={form.name}
               onChange={(e) => setForm({ ...form, name: e.target.value })}
-              placeholder="Ada Lovelace"
-            />
+              placeholder="Ada Lovelace" />
           </div>
           <div>
             <label className="label">Wallet address</label>
-            <input
-              className="input font-mono text-xs"
-              value={form.wallet}
+            <input className="input font-mono text-xs" value={form.wallet}
               onChange={(e) => setForm({ ...form, wallet: e.target.value })}
-              placeholder="0x…"
-            />
+              placeholder="0x…" />
           </div>
           <div>
             <label className="label">Hourly rate (0G)</label>
-            <input
-              className="input"
-              inputMode="decimal"
-              value={form.hourlyRate}
+            <input className="input" inputMode="decimal" value={form.hourlyRate}
               onChange={(e) => setForm({ ...form, hourlyRate: e.target.value })}
-              placeholder="0.01"
-            />
+              placeholder="0.01" />
           </div>
         </div>
         <div className="flex items-center justify-between">
           {msg && (
-            <p className={`text-xs ${msg.ok ? "text-brand-700 dark:text-brand-400" : "text-red-500"}`}>
+            <p className={`text-xs ${msg.ok ? "" : "text-red-400"}`}
+              style={msg.ok ? { color: "var(--c-primary)" } : undefined}>
               {msg.text}
             </p>
           )}
@@ -161,149 +145,100 @@ export default function EmployeesPanel({ employer }: { employer: string }) {
       </form>
 
       {/* Table */}
-      <div className="overflow-x-auto -mx-1">
+      <div className="overflow-x-auto">
         <table className="w-full text-sm min-w-[640px]">
-          <thead className="text-left text-xs uppercase text-ink-500 dark:text-gray-400
-              border-b border-slate-100 dark:border-gray-800">
-            <tr>
-              <th className="pb-2 pl-1">Name</th>
-              <th>Wallet</th>
-              <th>Rate</th>
-              <th>Status</th>
-              <th className="text-right pr-1">Actions</th>
+          <thead>
+            <tr style={{ borderBottom: "1px solid var(--c-border)" }}>
+              <th className="pb-2 text-left text-xs uppercase tracking-wide font-medium pl-1" style={{ color: "var(--c-dim)" }}>Name</th>
+              <th className="pb-2 text-left text-xs uppercase tracking-wide font-medium" style={{ color: "var(--c-dim)" }}>Wallet</th>
+              <th className="pb-2 text-left text-xs uppercase tracking-wide font-medium" style={{ color: "var(--c-dim)" }}>Rate</th>
+              <th className="pb-2 text-left text-xs uppercase tracking-wide font-medium" style={{ color: "var(--c-dim)" }}>Status</th>
+              <th className="pb-2 text-right text-xs uppercase tracking-wide font-medium pr-1" style={{ color: "var(--c-dim)" }}>Actions</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-50 dark:divide-gray-800/60">
+          <tbody>
             {rows.length === 0 && (
               <tr>
-                <td colSpan={5} className="py-10 text-center text-ink-400 dark:text-gray-500 text-sm">
+                <td colSpan={5} className="py-10 text-center text-sm" style={{ color: "var(--c-dim)" }}>
                   No employees yet. Add your first team member above.
                 </td>
               </tr>
             )}
 
             {rows.map((r) => {
-              const open       = openFor(r.id);
-              const isEditing  = editId === r.id;
-              const isBusy     = busy === `edit:${r.id}`;
+              const open      = openFor(r.id);
+              const isEditing = editId === r.id;
+              const isBusy    = busy === `edit:${r.id}`;
 
               if (isEditing) {
-                /* ── Inline edit row ── */
                 return (
-                  <tr key={r.id} className="bg-brand-50/40 dark:bg-brand-900/10">
+                  <tr key={r.id} style={{ background: "var(--c-bg-hover)" }}>
                     <td className="py-3 pl-1">
-                      <input
-                        className="input text-xs w-36"
-                        value={draft.name}
+                      <input className="input text-xs w-36" value={draft.name}
                         onChange={(e) => setDraft({ ...draft, name: e.target.value })}
-                        placeholder="Name"
-                        autoFocus
-                      />
+                        placeholder="Name" autoFocus />
                     </td>
-                    <td className="font-mono text-xs text-ink-400 dark:text-gray-500">
+                    <td className="font-mono text-xs" style={{ color: "var(--c-dim)" }}>
                       {short(r.wallet)}
-                      <div className="text-[10px] text-ink-300 dark:text-gray-600">wallet locked</div>
+                      <div className="text-[10px]" style={{ color: "var(--c-dim)" }}>wallet locked</div>
                     </td>
                     <td>
                       <div className="flex items-center gap-1">
-                        <input
-                          className="input text-xs w-24"
-                          inputMode="decimal"
+                        <input className="input text-xs w-24" inputMode="decimal"
                           value={draft.hourlyRate}
                           onChange={(e) => setDraft({ ...draft, hourlyRate: e.target.value })}
-                          placeholder="0G/hr"
-                        />
-                        <span className="text-xs text-ink-400 dark:text-gray-500 whitespace-nowrap">0G/hr</span>
+                          placeholder="0G/hr" />
+                        <span className="text-xs" style={{ color: "var(--c-dim)" }}>0G/hr</span>
                       </div>
                     </td>
                     <td>
-                      {open ? (
-                        <span className="pill bg-amber-100 text-amber-700">Clocked in</span>
-                      ) : (
-                        <span className="pill bg-slate-100 text-ink-500 dark:bg-gray-800 dark:text-gray-400">
-                          Off clock
-                        </span>
-                      )}
+                      {open
+                        ? <span className="pill-amber">Clocked in</span>
+                        : <span className="pill" style={{ background: "var(--c-bg-hover)", color: "var(--c-muted)", border: "1px solid var(--c-border)" }}>Off clock</span>
+                      }
                     </td>
                     <td className="text-right pr-1">
                       <div className="flex gap-2 justify-end">
-                        <button
-                          onClick={() => saveEdit(r.id)}
-                          disabled={isBusy}
-                          className="btn-primary text-xs"
-                        >
+                        <button onClick={() => saveEdit(r.id)} disabled={isBusy} className="btn-primary text-xs">
                           {isBusy ? "Saving…" : "Save"}
                         </button>
-                        <button
-                          onClick={() => setEditId(null)}
-                          className="btn-ghost text-xs"
-                        >
-                          Cancel
-                        </button>
+                        <button onClick={() => setEditId(null)} className="btn-ghost text-xs">Cancel</button>
                       </div>
                     </td>
                   </tr>
                 );
               }
 
-              /* ── Normal row ── */
               return (
-                <tr key={r.id}>
-                  <td className="py-3 pl-1 font-medium dark:text-white">{r.name}</td>
-                  <td className="font-mono text-xs text-ink-500 dark:text-gray-400">
-                    {short(r.wallet)}
-                  </td>
-                  <td className="dark:text-gray-300">
-                    <span className="font-medium">{r.hourlyRate}</span>
-                    <span className="text-ink-400 dark:text-gray-500 text-xs ml-1">0G/hr</span>
+                <tr key={r.id}
+                  style={{ borderTop: "1px solid var(--c-border)" }}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = "var(--c-bg-hover)")}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = "")}>
+                  <td className="py-3 pl-1 font-medium" style={{ color: "var(--c-fg)" }}>{r.name}</td>
+                  <td className="font-mono text-xs" style={{ color: "var(--c-dim)" }}>{short(r.wallet)}</td>
+                  <td>
+                    <span className="font-medium" style={{ color: "var(--c-muted)" }}>{r.hourlyRate}</span>
+                    <span className="text-xs ml-1" style={{ color: "var(--c-dim)" }}>0G/hr</span>
                   </td>
                   <td>
-                    {open ? (
-                      <span className="pill bg-amber-100 text-amber-700">
-                        Clocked in · {dateTime(open.clockIn).split(",")[1]?.trim()}
-                      </span>
-                    ) : (
-                      <span className="pill bg-slate-100 text-ink-500 dark:bg-gray-800 dark:text-gray-400">
-                        Off clock
-                      </span>
-                    )}
+                    {open
+                      ? <span className="pill-amber">Clocked in · {dateTime(open.clockIn).split(",")[1]?.trim()}</span>
+                      : <span className="pill" style={{ background: "var(--c-bg-hover)", color: "var(--c-muted)", border: "1px solid var(--c-border)" }}>Off clock</span>
+                    }
                   </td>
                   <td className="text-right pr-1">
                     <div className="flex gap-1.5 justify-end">
-                      {/* Edit */}
-                      <button
-                        onClick={() => startEdit(r)}
-                        className="btn-ghost text-xs"
-                      >
-                        Edit
-                      </button>
-
-                      {/* Clock in/out */}
+                      <button onClick={() => startEdit(r)} className="btn-ghost text-xs px-2.5 py-1">Edit</button>
                       {open ? (
-                        <button
-                          onClick={() => clock(r.id, "out")}
-                          disabled={!!busy}
-                          className="btn-ghost text-xs"
-                        >
+                        <button onClick={() => clock(r.id, "out")} disabled={!!busy} className="btn-ghost text-xs px-2.5 py-1">
                           Clock out
                         </button>
                       ) : (
-                        <button
-                          onClick={() => clock(r.id, "in")}
-                          disabled={!!busy}
-                          className="btn-primary text-xs"
-                        >
+                        <button onClick={() => clock(r.id, "in")} disabled={!!busy} className="btn-primary text-xs px-2.5 py-1">
                           Clock in
                         </button>
                       )}
-
-                      {/* Remove */}
-                      <button
-                        onClick={() => remove(r.id)}
-                        className="btn-ghost text-xs text-red-500 hover:text-red-700"
-                      >
-                        Remove
-                      </button>
+                      <button onClick={() => remove(r.id)} className="btn-danger text-xs px-2.5 py-1">Remove</button>
                     </div>
                   </td>
                 </tr>

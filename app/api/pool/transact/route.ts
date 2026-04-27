@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { ethers } from "ethers";
-import { getSettings } from "@/lib/db";
+import { getSettings, getOperatorKey } from "@/lib/db";
 import { requireEmployer } from "@/lib/tenant";
 
 export const runtime = "nodejs";
@@ -25,22 +25,28 @@ export async function POST(req: Request) {
   if (!amountEther || !Number.isFinite(parsed) || parsed <= 0)
     return NextResponse.json({ error: "invalid amount" }, { status: 400 });
 
-  const pk = process.env.EMPLOYER_PRIVATE_KEY;
-  if (!pk)
-    return NextResponse.json(
-      { error: "EMPLOYER_PRIVATE_KEY not set — platform key required." },
-      { status: 500 },
-    );
-
   const settings = await getSettings(g.employer);
   if (!settings.poolAddress)
     return NextResponse.json({ error: "No pool contract deployed for this employer." }, { status: 400 });
 
+  // Use per-tenant operator key; fall back to platform key for legacy tenants
+  const operatorKey = await getOperatorKey(g.employer)
+    ?? process.env.EMPLOYER_PRIVATE_KEY;
+
+  if (!operatorKey)
+    return NextResponse.json(
+      { error: "No signing key available — please redeploy your payroll contract." },
+      { status: 500 },
+    );
+
   try {
     const rpc      = process.env.NEXT_PUBLIC_ZG_RPC_URL ?? "https://evmrpc-testnet.0g.ai";
     const provider = new ethers.JsonRpcProvider(rpc);
-    const signer   = new ethers.Wallet(pk.startsWith("0x") ? pk : "0x" + pk, provider);
-    const contract = new ethers.Contract(settings.poolAddress, POOL_ABI, signer);
+    const signer   = new ethers.Wallet(
+      operatorKey.startsWith("0x") ? operatorKey : "0x" + operatorKey,
+      provider,
+    );
+    const contract  = new ethers.Contract(settings.poolAddress, POOL_ABI, signer);
     const amountWei = ethers.parseEther(amountEther);
 
     let tx: ethers.TransactionResponse;

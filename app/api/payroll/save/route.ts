@@ -13,15 +13,22 @@ export async function POST(req: Request) {
   const g = await requireEmployer(req.url);
   if (!g.ok) return NextResponse.json({ error: g.error }, { status: g.status });
 
-  const body = await req.json().catch(() => ({}));
-  const weekOffset = body.weekOffset === -1 ? -1 : 0;
+  const body        = await req.json().catch(() => ({}));
+  const weekOffset  = body.weekOffset === -1 ? -1 : 0;
   const period: "daily" | "weekly" = body.period === "daily" ? "daily" : "weekly";
+  const employeeIds: string[] | null = Array.isArray(body.employeeIds) && body.employeeIds.length > 0
+    ? body.employeeIds
+    : null;
 
-  const [employees, attendance, poolAddress] = await Promise.all([
+  const [allEmployees, attendance, poolAddress] = await Promise.all([
     listEmployees(g.employer),
     listAttendance(g.employer),
     resolvePoolAddress(g.employer),
   ]);
+
+  const employees = employeeIds
+    ? allEmployees.filter((e) => employeeIds.includes(e.id))
+    : allEmployees;
   let poolBalanceWei = 0n;
   if (poolAddress) {
     try {

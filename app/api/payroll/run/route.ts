@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { listEmployees, listAttendance, addReport } from "@/lib/db";
+import { listEmployees, listAttendance, addReport, getOperatorKey } from "@/lib/db";
 import { buildReport } from "@/lib/agent";
 import { putJSON } from "@/lib/storage";
 import { createPublicClient, createWalletClient, http, formatEther } from "viem";
@@ -25,12 +25,14 @@ export async function POST(req: Request) {
   const g = await requireEmployer(req.url);
   if (!g.ok) return NextResponse.json({ error: g.error }, { status: g.status });
 
-  const body       = await req.json().catch(() => ({}));
-  const weekOffset = body.weekOffset === -1 ? -1 : 0;
+  const body        = await req.json().catch(() => ({}));
+  const weekOffset  = body.weekOffset === -1 ? -1 : 0;
   const period: "daily" | "weekly" | "monthly" =
     body.period === "daily" ? "daily" : body.period === "monthly" ? "monthly" : "weekly";
+  const employeeIds: string[] | null = Array.isArray(body.employeeIds) && body.employeeIds.length > 0
+    ? body.employeeIds
+    : null;
 
-  const pk          = process.env.EMPLOYER_PRIVATE_KEY;
   const poolAddress = await resolvePoolAddress(g.employer);
 
   if (!poolAddress)
@@ -38,20 +40,19 @@ export async function POST(req: Request) {
       { error: "Pool address not configured for this employer." },
       { status: 400 },
     );
-  if (!pk)
+
+  // Use per-tenant operator key; fall back to platform key for legacy tenants
+  const rawPk = await getOperatorKey(g.employer)
+    ?? process.env.EMPLOYER_PRIVATE_KEY;
+
+  if (!rawPk)
     return NextResponse.json(
-      { error: "EMPLOYER_PRIVATE_KEY not set — use the dashboard to submit manually." },
+      { error: "No signing key available — please redeploy your payroll contract." },
       { status: 400 },
     );
 
-  const account = privateKeyToAccount(
-    (pk.startsWith("0x") ? pk : `0x${pk}`) as `0x${string}`,
-  );
-  if (account.address.toLowerCase() !== g.employer)
-    return NextResponse.json(
-      { error: "Server signing key does not match this employer wallet." },
-      { status: 403 },
-    );
+  const pk      = (rawPk.startsWith("0x") ? rawPk : `0x${rawPk}`) as `0x${string}`;
+  const account = privateKeyToAccount(pk);
 
   const pub    = createPublicClient({ chain: zgGalileo, transport: http() });
   const wallet = createWalletClient({ chain: zgGalileo, transport: http(), account });
@@ -71,10 +72,14 @@ export async function POST(req: Request) {
     );
   }
 
-  const [employees, attendance] = await Promise.all([
+  const [allEmployees, attendance] = await Promise.all([
     listEmployees(g.employer),
     listAttendance(g.employer),
   ]);
+
+  const employees = employeeIds
+    ? allEmployees.filter((e) => employeeIds.includes(e.id))
+    : allEmployees;
 
   const report = buildReport({
     employees,
