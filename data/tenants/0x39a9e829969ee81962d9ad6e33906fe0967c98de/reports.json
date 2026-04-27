@@ -1,0 +1,84 @@
+[
+  {
+    "weekStart": 1777244400000,
+    "weekEnd": 1777330799999,
+    "generatedAt": 1777290880272,
+    "lines": [
+      {
+        "employeeId": "9e22bc48-9587-41b7-9e76-a9c925eeb7ed",
+        "employeeName": "Tunmzy",
+        "wallet": "0x39e276218258980D41102A7A3D282094E8BEf388",
+        "hoursWorked": 1.52,
+        "hourlyRate": 0.01,
+        "amount": 0.0152,
+        "amountWei": "15200000000000000"
+      },
+      {
+        "employeeId": "0c7941cf-a000-4d38-9d40-5b8e1cbc8abc",
+        "employeeName": "Michael",
+        "wallet": "0x8375aB036D85bCb70753E6274865ff21C53941B3",
+        "hoursWorked": 1.49,
+        "hourlyRate": 0.03,
+        "amount": 0.0447,
+        "amountWei": "44700000000000000"
+      },
+      {
+        "employeeId": "e9c2515c-4ae9-427a-90ce-faea1546e5f8",
+        "employeeName": "Sarah",
+        "wallet": "0x97C8Ac81C4846b114b4174783D61Ef2C56d779Ec",
+        "hoursWorked": 1.21,
+        "hourlyRate": 0.02,
+        "amount": 0.0242,
+        "amountWei": "24200000000000000"
+      }
+    ],
+    "totalPaid": 0.0841,
+    "totalPaidWei": "84100000000000000",
+    "poolBalanceWei": "495900000000000000",
+    "sufficient": true,
+    "warnings": [],
+    "storageRef": "local:36b1d66f88548233a27ee79ffeb0a6cc0db73243b851d4997c878a57c246c24a",
+    "txHash": "0x35b4698bf6feac464f1dc62cc952b7ec0030384e640ba98562f57f13ea773be7"
+  },
+  {
+    "weekStart": 1777244400000,
+    "weekEnd": 1777330799999,
+    "generatedAt": 1777290843605,
+    "lines": [
+      {
+        "employeeId": "9e22bc48-9587-41b7-9e76-a9c925eeb7ed",
+        "employeeName": "Tunmzy",
+        "wallet": "0x39e276218258980D41102A7A3D282094E8BEf388",
+        "hoursWorked": 1.52,
+        "hourlyRate": 0.01,
+        "amount": 0.0152,
+        "amountWei": "15200000000000000"
+      },
+      {
+        "employeeId": "0c7941cf-a000-4d38-9d40-5b8e1cbc8abc",
+        "employeeName": "Michael",
+        "wallet": "0x8375aB036D85bCb70753E6274865ff21C53941B3",
+        "hoursWorked": 1.49,
+        "hourlyRate": 0.03,
+        "amount": 0.0447,
+        "amountWei": "44700000000000000"
+      },
+      {
+        "employeeId": "e9c2515c-4ae9-427a-90ce-faea1546e5f8",
+        "employeeName": "Sarah",
+        "wallet": "0x97C8Ac81C4846b114b4174783D61Ef2C56d779Ec",
+        "hoursWorked": 1.21,
+        "hourlyRate": 0.02,
+        "amount": 0.0242,
+        "amountWei": "24200000000000000"
+      }
+    ],
+    "totalPaid": 0.0841,
+    "totalPaidWei": "84100000000000000",
+    "poolBalanceWei": "495900000000000000",
+    "sufficient": true,
+    "warnings": [],
+    "storageRef": "local:a6cb1216c5f2d4ee2effadb60217f9ef83428adda2b70e3f496c16dc23aab89f",
+    "txHash": "0xf937b328bc428e4188c7977c71df3ec308a232c653a4448928f31bfc7a34279b"
+  }
+]
