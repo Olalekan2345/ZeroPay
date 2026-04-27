@@ -1,17 +1,12 @@
 import { NextResponse } from "next/server";
-import { getSettings } from "@/lib/db";
+import { getSettings, type PaymentSchedule } from "@/lib/db";
 import { parseEmployer } from "@/lib/tenant";
 
 export const runtime = "nodejs";
 
 const DAY_NAMES = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
 
-function nextRunDate(schedule: {
-  frequency: "daily" | "weekly" | "monthly";
-  hour: number;
-  dayOfWeek?: number;
-  dayOfMonth?: number;
-}): { iso: string; label: string } {
+function nextRunDate(schedule: PaymentSchedule): { iso: string; label: string } {
   const now    = new Date();
   const target = new Date(now);
 
@@ -40,7 +35,7 @@ function nextRunDate(schedule: {
   const day = schedule.frequency === "weekly"
     ? `${DAY_NAMES[schedule.dayOfWeek ?? 6]}s`
     : schedule.frequency === "monthly"
-      ? `monthly (day ${schedule.dayOfMonth ?? 1})`
+      ? `monthly`
       : "daily";
   const at  = `${String(schedule.hour).padStart(2, "0")}:00`;
 
