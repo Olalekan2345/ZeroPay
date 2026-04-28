@@ -14,17 +14,11 @@ export const zgGalileo = defineChain({
   blockExplorers: {
     default: {
       name: "0G Chainscan",
-      url:
-        process.env.NEXT_PUBLIC_ZG_EXPLORER ?? "https://chainscan-galileo.0g.ai",
+      url: process.env.NEXT_PUBLIC_ZG_EXPLORER ?? "https://chainscan-galileo.0g.ai",
     },
   },
-  // 0G Galileo requires a minimum priority fee of 2 Gwei.
   fees: {
     defaultPriorityFee: 2_000_000_000n,
   },
   testnet: true,
 });
-
-export const PAYROLL_POOL_ADDRESS =
-  (process.env.NEXT_PUBLIC_PAYROLL_POOL_ADDRESS as `0x${string}` | undefined) ??
-  undefined;

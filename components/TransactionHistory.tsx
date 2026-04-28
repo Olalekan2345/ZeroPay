@@ -23,10 +23,7 @@ type Tx = {
 const EXPLORER = process.env.NEXT_PUBLIC_ZG_EXPLORER ?? "https://chainscan-galileo.0g.ai";
 
 const BADGE_STYLE: Record<string, { color: string; bg: string }> = {
-  Deposit:         { color: "#4ade80", bg: "rgba(74,222,128,0.1)"  },
-  Withdrawal:      { color: "#fb923c", bg: "rgba(251,146,60,0.1)"  },
-  Salary:          { color: "#9200e1", bg: "rgba(146,0,225,0.1)"   },
-  "Batch payroll": { color: "#dd23bb", bg: "rgba(221,35,187,0.1)"  },
+  Payroll: { color: "#dd23bb", bg: "rgba(221,35,187,0.1)" },
 };
 
 function Badge({ label }: { label: string }) {
@@ -55,14 +52,8 @@ function TxRow({ tx, price }: { tx: Tx; price: number | null }) {
   }
 
   let detail = "";
-  if (tx.label === "Deposit")
-    detail = `${fmtAmt(parseFloat(tx.amount!))}  from ${short(tx.from!)}`;
-  else if (tx.label === "Withdrawal")
-    detail = `${fmtAmt(parseFloat(tx.amount!))}  to ${short(tx.to!)}`;
-  else if (tx.label === "Salary")
-    detail = `${fmtAmt(parseFloat(tx.amount!))}  → ${short(tx.employee!)} (${tx.hoursWorked}h)`;
-  else if (tx.label === "Batch payroll")
-    detail = `${fmtAmt(parseFloat(tx.totalPaid!))}  to ${tx.employeeCount} employee${tx.employeeCount !== 1 ? "s" : ""}`;
+  if (tx.label === "Payroll" && tx.totalPaid && tx.employeeCount != null)
+    detail = `${fmtAmt(parseFloat(tx.totalPaid))}  paid to ${tx.employeeCount} employee${tx.employeeCount !== 1 ? "s" : ""}`;
 
   return (
     <div className="flex items-center justify-between gap-4 py-3 last:border-0" style={{ borderBottom: "1px solid var(--c-border)" }}>
@@ -87,7 +78,7 @@ function TxRow({ tx, price }: { tx: Tx; price: number | null }) {
   );
 }
 
-const FILTERS = ["All", "Deposit", "Withdrawal", "Salary", "Batch payroll"];
+const FILTERS = ["All", "Payroll"];
 
 export default function TransactionHistory({ employer }: { employer: string }) {
   const [txs, setTxs]         = useState<Tx[] | null>(null);
@@ -123,7 +114,7 @@ export default function TransactionHistory({ employer }: { employer: string }) {
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h2 className="text-base font-semibold" style={{ color: "var(--c-fg)" }}>Transaction History</h2>
-          <p className="text-xs mt-0.5" style={{ color: "var(--c-dim)" }}>On-chain events from your payroll pool contract</p>
+          <p className="text-xs mt-0.5" style={{ color: "var(--c-dim)" }}>Payroll runs executed by the AI agent</p>
         </div>
         <button onClick={load} disabled={loading} className="btn-ghost text-xs px-3 py-1.5">
           {loading ? "Loading…" : "↺ Refresh"}
@@ -159,7 +150,7 @@ export default function TransactionHistory({ employer }: { employer: string }) {
       {/* States */}
       {loading && (
         <div className="py-10 text-center text-sm animate-pulse" style={{ color: "var(--c-dim)" }}>
-          Fetching on-chain events…
+          Loading payroll history…
         </div>
       )}
 
