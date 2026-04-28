@@ -50,16 +50,21 @@ export async function POST(req: Request) {
 
     // Seed the operator address with gas (0.02 0G) from the platform key
     const seedTx = await platform.sendTransaction({
-      to: operatorAddress,
-      value: SEED_AMOUNT,
+      to:       operatorAddress,
+      value:    SEED_AMOUNT,
+      gasLimit: 21_000n,
+      maxPriorityFeePerGas: ethers.parseUnits("2", "gwei"),
     });
     await seedTx.wait();
 
     const ownerAddress = ethers.getAddress(g.employer); // employer wallet = owner
 
-    // Deploy contract: employer = owner, fresh operator = transaction signer
+    // Deploy with explicit gasLimit to skip estimateGas (0G Galileo RPC can misreport)
     const factory  = new ethers.ContractFactory(abi, bytecode, platform);
-    const contract = await factory.deploy(ownerAddress, operatorAddress);
+    const contract = await factory.deploy(ownerAddress, operatorAddress, {
+      gasLimit: 2_000_000n,
+      maxPriorityFeePerGas: ethers.parseUnits("2", "gwei"),
+    });
     await contract.waitForDeployment();
     const address  = await contract.getAddress() as `0x${string}`;
 
