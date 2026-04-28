@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
 import { ethers } from "ethers";
-import fs from "node:fs/promises";
-import path from "node:path";
 import { requireEmployer } from "@/lib/tenant";
 import { saveSettings, getSettings, saveOperatorKey } from "@/lib/db";
+import { PAYROLL_POOL_BYTECODE } from "@/lib/abi/PayrollPoolBytecode";
+import { PAYROLL_POOL_ABI } from "@/lib/abi/PayrollPool";
 
 export const runtime = "nodejs";
 
@@ -33,12 +33,8 @@ export async function POST(req: Request) {
   }
 
   try {
-    const [binRaw, abiRaw] = await Promise.all([
-      fs.readFile(path.join(process.cwd(), "contracts", "out", "PayrollPool.bin"), "utf8"),
-      fs.readFile(path.join(process.cwd(), "contracts", "out", "PayrollPool.abi"), "utf8"),
-    ]);
-    const bytecode = "0x" + binRaw.trim();
-    const abi      = JSON.parse(abiRaw);
+    const bytecode = PAYROLL_POOL_BYTECODE;
+    const abi      = PAYROLL_POOL_ABI;
 
     const rpc      = process.env.NEXT_PUBLIC_ZG_RPC_URL ?? "https://evmrpc-testnet.0g.ai";
     const provider = new ethers.JsonRpcProvider(rpc);
