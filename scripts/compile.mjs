@@ -21,6 +21,7 @@ const input = {
   sources: { "SecuredVault.sol": { content: source } },
   settings: {
     optimizer: { enabled: true, runs: 200 },
+    evmVersion: "paris",
     outputSelection: { "*": { "*": ["abi", "evm.bytecode.object"] } },
   },
 };
