@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 import {
   useAccount,
-  useDeployContract,
   useSendTransaction,
   useWaitForTransactionReceipt,
   useSwitchChain,
@@ -38,14 +37,12 @@ export default function VaultCard({ employer }: { employer: string }) {
   const { address, chainId }                          = useAccount();
   const { switchChainAsync, isPending: switching }    = useSwitchChain();
   const { sendTransactionAsync, isPending: sending }  = useSendTransaction();
-  const { deployContractAsync, isPending: deploying } = useDeployContract();
   const [txHash, setTxHash]         = useState<`0x${string}` | undefined>();
-  const [deployTxHash, setDeployTxHash] = useState<`0x${string}` | undefined>();
+  const [deploying, setDeploying]   = useState(false);
 
   const { isLoading: confirming, isSuccess } =
     useWaitForTransactionReceipt({ hash: txHash });
-  const { isLoading: deployConfirming, isSuccess: deploySuccess, data: deployReceipt } =
-    useWaitForTransactionReceipt({ hash: deployTxHash });
+  const [deploySuccess, setDeploySuccess] = useState(false);
 
   const { data: walletBalance } = useBalance({ address, chainId: zgGalileo.id });
   const onWrongNetwork = !!address && chainId !== zgGalileo.id;
@@ -66,17 +63,6 @@ export default function VaultCard({ employer }: { employer: string }) {
     }
   }, [isSuccess]);
 
-  useEffect(() => {
-    if (deploySuccess && deployReceipt?.contractAddress) {
-      const addr = deployReceipt.contractAddress;
-      setDeployMsg({ text: `Vault deployed at ${addr} — saving…`, ok: true });
-      saveAddress(addr).then(() => {
-        setDeployMsg({ text: `Secured Vault deployed & saved: ${short(addr)}`, ok: true });
-        setView("main");
-        refresh();
-      });
-    }
-  }, [deploySuccess, deployReceipt]);
 
   async function ensureNetwork(): Promise<boolean> {
     if (chainId === zgGalileo.id) return true;
@@ -202,29 +188,22 @@ export default function VaultCard({ employer }: { employer: string }) {
 
   async function deployVault() {
     setDeployMsg(null);
+    setDeploying(true);
     try {
-      const ok = await ensureNetwork();
-      if (!ok) return;
-      const r = await fetch(`/api/deploy-pool/bytecode?employer=${employer}`);
-      if (!r.ok) throw new Error((await r.json()).error ?? "Bytecode not available. Run: npm run compile");
-      const { bytecode, operatorAddress } = await r.json();
-      const operator = (operatorAddress ?? address) as `0x${string}`;
-      setDeployMsg({ text: "Deploying vault — confirm in your wallet…", ok: true });
-      const hash = await deployContractAsync({
-        abi:     PAYROLL_POOL_ABI,
-        bytecode,
-        args:    [address as `0x${string}`, operator],
-        chainId: zgGalileo.id,
-        gas:     1_500_000n,
+      setDeployMsg({ text: "Deploying vault via platform key — this takes ~30s…", ok: true });
+      const res = await fetch(`/api/deploy-pool?employer=${employer}`, {
+        method: "POST",
       });
-      setDeployTxHash(hash);
-      setDeployMsg({ text: "Deployment sent — waiting for confirmation…", ok: true });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? "Deployment failed");
+      setDeploySuccess(true);
+      setDeployMsg({ text: `Vault deployed at ${json.address}`, ok: true });
+      await refresh();
+      setView("main");
     } catch (e) {
-      const m = (e as Error).message ?? "";
-      if (/user rejected|user cancel|user denied/i.test(m))
-        setDeployMsg({ text: "Cancelled.", ok: false });
-      else
-        setDeployMsg({ text: m, ok: false });
+      setDeployMsg({ text: (e as Error).message, ok: false });
+    } finally {
+      setDeploying(false);
     }
   }
 
@@ -275,18 +254,15 @@ export default function VaultCard({ employer }: { employer: string }) {
         <div className="rounded-xl bg-slate-50 dark:bg-gray-800 border border-slate-100 dark:border-gray-700 p-4 space-y-3">
           <div className="text-xs text-ink-500 dark:text-gray-400">
             Deploys <span className="font-mono font-semibold">PayrollPool.sol</span> as your
-            Secured Vault on 0G Galileo. Gas cost ~0.001–0.01 0G.
+            Secured Vault on 0G Galileo. Deployed by the platform — no gas needed from your wallet.
           </div>
           <button
             onClick={deployVault}
-            disabled={deploying || deployConfirming || onWrongNetwork}
+            disabled={deploying || onWrongNetwork}
             className="btn-primary"
           >
-            {deploying ? "Confirm in wallet…" : deployConfirming ? "Confirming…" : "Deploy Secured Vault"}
+            {deploying ? "Deploying — please wait…" : "Deploy Secured Vault"}
           </button>
-          {deployTxHash && (
-            <p className="font-mono text-xs text-ink-400 dark:text-gray-500 break-all">Tx: {deployTxHash}</p>
-          )}
           {deployMsg && (
             <p className={`text-xs font-medium ${deployMsg.ok ? "text-brand-700 dark:text-brand-400" : "text-red-500"}`}>
               {deployMsg.text}
