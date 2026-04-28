@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
-import { ethers } from "ethers";
-import { listEmployees, listAttendance, getOperatorKey, saveOperatorKey } from "@/lib/db";
+import { listEmployees, listAttendance } from "@/lib/db";
 import { buildReport } from "@/lib/agent";
 import { requireEmployer } from "@/lib/tenant";
 
@@ -17,22 +16,6 @@ export async function GET(req: Request) {
   const rawIds      = searchParams.get("employeeIds");
   const employeeIds = rawIds ? rawIds.split(",").filter(Boolean) : null;
 
-  // Read agent wallet balance
-  let agentBalanceWei = 0n;
-  let rawPk = await getOperatorKey(g.employer);
-  if (!rawPk) {
-    const fresh = ethers.Wallet.createRandom();
-    rawPk = fresh.privateKey;
-    await saveOperatorKey(g.employer, rawPk);
-  }
-
-  try {
-    const rpc      = process.env.NEXT_PUBLIC_ZG_RPC_URL ?? "https://evmrpc-testnet.0g.ai";
-    const provider = new ethers.JsonRpcProvider(rpc);
-    const address  = new ethers.Wallet(rawPk.startsWith("0x") ? rawPk : "0x" + rawPk).address;
-    agentBalanceWei = await provider.getBalance(address);
-  } catch { /* show 0 balance if RPC fails */ }
-
   const [allEmployees, attendance] = await Promise.all([
     listEmployees(g.employer),
     listAttendance(g.employer),
@@ -42,10 +25,11 @@ export async function GET(req: Request) {
     ? allEmployees.filter((e) => employeeIds.includes(e.id))
     : allEmployees;
 
+  // Balance check is done client-side against the employer's connected wallet
   const report = buildReport({
     employees,
     attendance,
-    poolBalanceWei: agentBalanceWei,
+    poolBalanceWei: 0n,
     weekOffset: weekOffset === -1 ? -1 : 0,
     period,
   });

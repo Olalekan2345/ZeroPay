@@ -5,6 +5,9 @@ import type { PayrollReport, PayrollLine, Employee } from "@/lib/types";
 import type { PaymentSchedule } from "@/lib/db";
 import { fmt0G, tokenToUSD, short } from "@/lib/format";
 import { use0GPrice } from "@/lib/usePrice";
+import { useAccount, useSendTransaction, useSwitchChain, useBalance } from "wagmi";
+import { formatEther } from "viem";
+import { zgGalileo } from "@/lib/chain";
 import { WORK_START_HOUR, WORK_END_HOUR, MAX_DAILY_HOURS } from "@/lib/agent";
 
 type Message = {
@@ -35,10 +38,7 @@ export default function AgentPanel({ employer }: { employer: string }) {
   const [schedule, setSchedule]               = useState<PaymentSchedule>({
     frequency: "weekly", hour: 9, minute: 0, dayOfWeek: 6, dayOfMonth: 1,
   });
-  const [scheduleEditing, setScheduleEditing] = useState(false);
   const [cancellingSchedule, setCancellingSchedule] = useState(false);
-  const [payNowBusy, setPayNowBusy]           = useState(false);
-  const [payNowResult, setPayNowResult]       = useState<{ ok: boolean; text: string } | null>(null);
   const [savingSched, setSavingSched]         = useState(false);
   const [schedulerStatus, setSchedulerStatus] = useState<SchedulerStatus | null>(null);
   const [period, setPeriod]                   = useState<"daily" | "weekly" | "monthly">("weekly");
@@ -49,6 +49,11 @@ export default function AgentPanel({ employer }: { employer: string }) {
   const [selectedIds, setSelectedIds]         = useState<Set<string>>(new Set());
   const bottomRef                             = useRef<HTMLDivElement>(null);
   const price                                 = use0GPrice();
+
+  const { address, chainId }                       = useAccount();
+  const { switchChainAsync, isPending: switching } = useSwitchChain();
+  const { sendTransactionAsync }                   = useSendTransaction();
+  const { data: walletBalance }                    = useBalance({ address, chainId: zgGalileo.id });
 
   function push(msg: Omit<Message, "ts">) {
     setMessages((p) => [...p, { ...msg, ts: Date.now() }]);
@@ -65,6 +70,29 @@ export default function AgentPanel({ employer }: { employer: string }) {
   async function loadSchedulerStatus() {
     const r = await fetch(`/api/scheduler/status?employer=${employer}`, { cache: "no-store" });
     setSchedulerStatus(await r.json());
+  }
+
+  async function ensureNetwork(): Promise<boolean> {
+    if (chainId === zgGalileo.id) return true;
+    try {
+      await switchChainAsync({ chainId: zgGalileo.id });
+      return true;
+    } catch {
+      try {
+        await (window as any).ethereum?.request({
+          method: "wallet_addEthereumChain",
+          params: [{
+            chainId:           `0x${zgGalileo.id.toString(16)}`,
+            chainName:         zgGalileo.name,
+            nativeCurrency:    { name: "0G", symbol: "0G", decimals: 18 },
+            rpcUrls:           [zgGalileo.rpcUrls.default.http[0]],
+            blockExplorerUrls: [zgGalileo.blockExplorers.default.url],
+          }],
+        });
+        await switchChainAsync({ chainId: zgGalileo.id });
+        return true;
+      } catch { return false; }
+    }
   }
 
   useEffect(() => {
@@ -95,10 +123,8 @@ export default function AgentPanel({ employer }: { employer: string }) {
           `  • Workdays: Monday → Friday\n` +
           `  • Work window: ${WORK_START_HOUR}:00 – ${WORK_END_HOUR}:00\n` +
           `  • Max paid hours/day: ${MAX_DAILY_HOURS}h\n` +
-          `  • Weekends automatically excluded\n` +
-          `  • Clock-in blocked outside work hours\n\n` +
-          `Payment schedule: ${freq === "daily" ? "Daily" : freq === "monthly" ? "Monthly" : "Weekly"}.\n` +
-          `Salaries are sent directly from the agent wallet to each employee's address. Fund the agent wallet in the Overview tab.`,
+          `  • Weekends automatically excluded\n\n` +
+          `Salaries are paid directly from your connected wallet. Make sure it has enough 0G before running payroll.`,
       });
     });
   }, [employer]);
@@ -111,12 +137,8 @@ export default function AgentPanel({ employer }: { employer: string }) {
       body: JSON.stringify({ paymentSchedule: schedule }),
     });
     const s = await res.json();
-    if (s.paymentSchedule) {
-      setSchedule(s.paymentSchedule);
-      setPeriod(s.paymentSchedule.frequency);
-    }
+    if (s.paymentSchedule) { setSchedule(s.paymentSchedule); setPeriod(s.paymentSchedule.frequency); }
     setSavingSched(false);
-    setScheduleEditing(false);
     await loadSchedulerStatus();
     const t = `${String(schedule.hour).padStart(2,"0")}:${String(schedule.minute ?? 0).padStart(2,"0")}`;
     const schedLabel = schedule.frequency === "daily"
@@ -124,10 +146,7 @@ export default function AgentPanel({ employer }: { employer: string }) {
       : schedule.frequency === "monthly"
       ? `Monthly on the ${DAY_OF_MONTH_OPTIONS[(schedule.dayOfMonth ?? 1) - 1]?.label} at ${t}`
       : `Every ${DAY_NAMES[schedule.dayOfWeek ?? 6]} at ${t}`;
-    push({
-      from: "agent",
-      text: `Schedule updated: ${schedLabel}.\n\nThe agent will automatically execute payroll at this time and pay salaries directly from the agent wallet.`,
-    });
+    push({ from: "agent", text: `Schedule saved: ${schedLabel}.` });
   }
 
   async function cancelSchedule() {
@@ -135,48 +154,29 @@ export default function AgentPanel({ employer }: { employer: string }) {
     await fetch(`/api/settings?employer=${employer}`, { method: "DELETE" });
     setCancellingSchedule(false);
     await loadSchedulerStatus();
-    push({ from: "agent", text: "Automatic payment schedule cancelled. Use Set Schedule to configure a new one." });
-  }
-
-  async function payNow() {
-    setPayNowBusy(true);
-    setPayNowResult(null);
-    try {
-      const res = await fetch(`/api/payroll/run?employer=${employer}`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          weekOffset: offset,
-          period,
-          employeeIds: selectedIds.size < employees.length ? [...selectedIds] : undefined,
-        }),
-      });
-      const body = await res.json();
-      if (body.txHash) {
-        setPayNowResult({ ok: true, text: `Payment sent ✓  tx: ${body.txHash}` });
-      } else if (body.error === "insufficient_pool") {
-        setPayNowResult({ ok: false, text: `Insufficient agent wallet balance — send more 0G to the agent wallet first.` });
-      } else if (body.warnings?.includes("No payable hours for this period.") || body.lines?.every((l: any) => l.amountWei === "0")) {
-        setPayNowResult({ ok: false, text: "No payable hours for this period." });
-      } else if (!res.ok) {
-        setPayNowResult({ ok: false, text: body.error ?? "Payment failed." });
-      } else {
-        setPayNowResult({ ok: true, text: `Done — ${body.totalPaid} 0G paid to ${body.lines?.filter((l: any) => BigInt(l.amountWei) > 0n).length ?? 0} employee(s).` });
-      }
-    } catch (e) {
-      setPayNowResult({ ok: false, text: (e as Error).message });
-    } finally {
-      setPayNowBusy(false);
-    }
+    push({ from: "agent", text: "Schedule cancelled." });
   }
 
   async function runAgent() {
     if (running) return;
     setRunning(true);
 
-    const periodLabel = period === "daily" ? "today" : period === "monthly" ? "this month" : "this week";
     push({ from: "system", text: `— Run started ${new Date().toLocaleString()} —` });
-    push({ from: "agent", text: `Fetching attendance records…` });
+
+    if (!address) {
+      push({ from: "agent", text: "No wallet connected. Connect your employer wallet to pay salaries." });
+      setRunning(false);
+      return;
+    }
+
+    const ok = await ensureNetwork();
+    if (!ok) {
+      push({ from: "agent", text: "Could not switch to 0G Galileo. Please switch manually in your wallet." });
+      setRunning(false);
+      return;
+    }
+
+    push({ from: "agent", text: "Fetching attendance records…" });
 
     const filteredIds = selectedIds.size < employees.length ? [...selectedIds] : null;
     const previewUrl  = `/api/payroll/preview?employer=${employer}&weekOffset=${offset}&period=${period}`
@@ -196,13 +196,17 @@ export default function AgentPanel({ employer }: { employer: string }) {
       return usd ? `${base} (≈${usd})` : base;
     };
 
+    const payable    = rep.lines.filter((l) => BigInt(l.amountWei) > 0n);
+    const totalOwed  = payable.reduce((s, l) => s + BigInt(l.amountWei), 0n);
+    const walletBal  = walletBalance?.value ?? 0n;
+
     push({
       from: "agent",
       text:
         `Attendance aggregated for ${rangeLabel}.\n\n` +
-        `Agent wallet balance:  ${fmtWithUsd(rep.poolBalanceWei)}\n` +
-        `Total owed:            ${fmtWithUsd(rep.totalPaidWei)}\n` +
-        `Funds OK:              ${rep.sufficient ? "✓ Yes" : "✗ No — fund the agent wallet"}`,
+        `Your wallet balance:  ${walletBal ? fmtWithUsd(walletBal.toString()) : "—"}\n` +
+        `Total owed:          ${fmtWithUsd(totalOwed.toString())}\n` +
+        `Funds OK:            ${walletBal >= totalOwed ? "✓ Yes" : "✗ No — top up your wallet"}`,
       lines: rep.lines.filter((l) => l.hoursWorked > 0),
       price,
     });
@@ -210,47 +214,57 @@ export default function AgentPanel({ employer }: { employer: string }) {
     if (rep.warnings.length > 0)
       push({ from: "agent", text: `Warnings:\n${rep.warnings.map((w) => `⚠ ${w}`).join("\n")}` });
 
-    const payable = rep.lines.filter((l) => BigInt(l.amountWei) > 0n);
     if (payable.length === 0) {
-      push({ from: "agent", text: `No payable hours for ${periodLabel}. Nothing to submit.` });
-      setRunning(false);
-      return;
-    }
-    if (!rep.sufficient) {
-      push({ from: "agent", text: "Agent wallet underfunded — add more 0G tokens in the Overview tab." });
+      push({ from: "agent", text: "No payable hours for this period. Nothing to submit." });
       setRunning(false);
       return;
     }
 
-    push({ from: "agent", text: `Sending ${payable.length} direct payment(s) from agent wallet…` });
+    if (walletBal < totalOwed) {
+      push({ from: "agent", text: `Wallet underfunded — need ${formatEther(totalOwed - walletBal)} more 0G.` });
+      setRunning(false);
+      return;
+    }
+
+    push({ from: "agent", text: `Sending ${payable.length} payment(s) from your wallet — approve each in Rabby…` });
 
     try {
-      const runRes = await fetch(`/api/payroll/run?employer=${employer}`, {
+      const hashes: string[] = [];
+      for (const line of payable) {
+        const hash = await sendTransactionAsync({
+          to:      line.wallet as `0x${string}`,
+          value:   BigInt(line.amountWei),
+          chainId: zgGalileo.id,
+          gas:     21_000n,
+        });
+        hashes.push(hash);
+        push({ from: "tx", text: `Sent ${fmt0G(line.amountWei)} → ${short(line.wallet)}`, txHash: hash });
+      }
+
+      // Save report to DB
+      await fetch(`/api/payroll/run?employer=${employer}`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           weekOffset: offset,
           period,
           employeeIds: filteredIds ?? undefined,
+          txHash: hashes[0],
         }),
       });
-      const result: PayrollReport & { error?: string } = await runRes.json();
 
-      if (!runRes.ok || result.error) {
-        push({ from: "agent", text: `Error: ${result.error ?? "Payment failed."}` });
-      } else if (result.txHash) {
-        push({ from: "tx", text: "Payments confirmed on-chain ✓", txHash: result.txHash });
-      } else {
-        push({ from: "agent", text: "Payroll processed. Check the History tab for details." });
-      }
+      push({ from: "agent", text: `All ${payable.length} payment(s) submitted ✓` });
     } catch (e) {
-      push({ from: "agent", text: `Error: ${(e as Error).message}` });
+      const m = (e as Error).message ?? "";
+      if (/user rejected|user cancel|user denied/i.test(m))
+        push({ from: "agent", text: "Cancelled by user." });
+      else
+        push({ from: "agent", text: `Error: ${m}` });
     } finally {
       setRunning(false);
     }
   }
 
-  /* ── Helpers ── */
   function schedSummary() {
     const t = `${String(schedule.hour).padStart(2,"0")}:${String(schedule.minute ?? 0).padStart(2,"0")}`;
     if (schedule.frequency === "daily")   return `Every day at ${t}`;
@@ -305,7 +319,7 @@ export default function AgentPanel({ employer }: { employer: string }) {
           <div>
             <div className="text-sm font-semibold" style={{ color: "var(--c-fg)" }}>Automatic payment schedule</div>
             <div className="text-xs mt-0.5" style={{ color: "var(--c-dim)" }}>
-              The agent executes payroll automatically and sends salaries directly from the agent wallet.
+              Configure when the agent should remind or trigger payroll runs.
             </div>
           </div>
           {schedulerStatus?.next && (
@@ -357,12 +371,10 @@ export default function AgentPanel({ employer }: { employer: string }) {
               value={`${String(schedule.hour).padStart(2,"0")}:${String(schedule.minute ?? 0).padStart(2,"0")}`}
               onChange={(e) => {
                 const [hStr, mStr] = e.target.value.split(":");
-                const h = parseInt(hStr, 10);
-                const m = parseInt(mStr, 10);
                 setSchedule((s) => ({
                   ...s,
-                  hour:   isNaN(h) ? s.hour   : h,
-                  minute: isNaN(m) ? s.minute  : m,
+                  hour:   isNaN(parseInt(hStr)) ? s.hour   : parseInt(hStr),
+                  minute: isNaN(parseInt(mStr)) ? s.minute  : parseInt(mStr),
                 }));
               }}
             />
@@ -373,19 +385,11 @@ export default function AgentPanel({ employer }: { employer: string }) {
           <p className="text-sm" style={{ color: "var(--c-muted)" }}>{schedSummary()}</p>
           <div className="flex gap-2">
             {schedulerStatus?.schedule && (
-              <button
-                onClick={cancelSchedule}
-                disabled={cancellingSchedule || savingSched}
-                className="btn-danger text-xs px-3 py-1.5"
-              >
+              <button onClick={cancelSchedule} disabled={cancellingSchedule || savingSched} className="btn-danger text-xs px-3 py-1.5">
                 {cancellingSchedule ? "Cancelling…" : "Cancel Schedule"}
               </button>
             )}
-            <button
-              onClick={saveSchedule}
-              disabled={savingSched || cancellingSchedule}
-              className="btn-primary"
-            >
+            <button onClick={saveSchedule} disabled={savingSched || cancellingSchedule} className="btn-primary">
               {savingSched ? "Saving…" : "Set Schedule"}
             </button>
           </div>
@@ -398,144 +402,92 @@ export default function AgentPanel({ employer }: { employer: string }) {
           <div className="flex items-center justify-between gap-3 flex-wrap">
             <div>
               <div className="text-sm font-semibold" style={{ color: "var(--c-fg)" }}>Select employees to pay</div>
-              <div className="text-xs mt-0.5" style={{ color: "var(--c-dim)" }}>
-                Only checked employees will be included in the next payment run.
-              </div>
+              <div className="text-xs mt-0.5" style={{ color: "var(--c-dim)" }}>Only checked employees will be included.</div>
             </div>
             <div className="flex gap-3 text-xs">
-              <button onClick={() => setSelectedIds(new Set(employees.map((e) => e.id)))} style={{ color: "var(--c-primary)" }}>
-                Select all
-              </button>
+              <button onClick={() => setSelectedIds(new Set(employees.map((e) => e.id)))} style={{ color: "var(--c-primary)" }}>Select all</button>
               <span style={{ color: "var(--c-border-s)" }}>·</span>
-              <button onClick={() => setSelectedIds(new Set())} style={{ color: "var(--c-dim)" }}>
-                Clear all
-              </button>
+              <button onClick={() => setSelectedIds(new Set())} style={{ color: "var(--c-dim)" }}>Clear all</button>
             </div>
           </div>
           <div className="space-y-1.5">
             {employees.map((emp) => {
               const checked = selectedIds.has(emp.id);
               return (
-                <label
-                  key={emp.id}
-                  className="flex items-center gap-3 px-3 py-2.5 rounded-xl cursor-pointer transition-colors"
-                  style={{
-                    background: checked ? "var(--c-bg-hover)" : "transparent",
-                    border: `1px solid ${checked ? "var(--c-border-s)" : "transparent"}`,
-                  }}
-                >
-                  <input
-                    type="checkbox"
-                    checked={checked}
+                <label key={emp.id} className="flex items-center gap-3 px-3 py-2.5 rounded-xl cursor-pointer transition-colors"
+                  style={{ background: checked ? "var(--c-bg-hover)" : "transparent", border: `1px solid ${checked ? "var(--c-border-s)" : "transparent"}` }}>
+                  <input type="checkbox" checked={checked}
                     onChange={(e) => {
                       const next = new Set(selectedIds);
-                      if (e.target.checked) next.add(emp.id);
-                      else next.delete(emp.id);
+                      if (e.target.checked) next.add(emp.id); else next.delete(emp.id);
                       setSelectedIds(next);
                     }}
-                    className="w-4 h-4 flex-shrink-0 rounded"
-                    style={{ accentColor: "var(--c-primary)" }}
+                    className="w-4 h-4 flex-shrink-0 rounded" style={{ accentColor: "var(--c-primary)" }}
                   />
-                  <span className="text-sm font-medium flex-1" style={{ color: checked ? "var(--c-fg)" : "var(--c-muted)" }}>
-                    {emp.name}
-                  </span>
+                  <span className="text-sm font-medium flex-1" style={{ color: checked ? "var(--c-fg)" : "var(--c-muted)" }}>{emp.name}</span>
                   <span className="text-xs" style={{ color: "var(--c-dim)" }}>{emp.hourlyRate} 0G/hr</span>
                 </label>
               );
             })}
           </div>
-          {selectedIds.size === 0 && (
-            <p className="text-xs text-amber-400 px-1">No employees selected — payment will be skipped.</p>
-          )}
+          {selectedIds.size === 0 && <p className="text-xs text-amber-400 px-1">No employees selected.</p>}
         </div>
       )}
 
-      {/* ── Pay Now ── */}
-      <div className="card p-5 space-y-3">
+      {/* ── Run agent ── */}
+      <div className="card p-5 space-y-4">
         <div className="flex flex-wrap gap-3 items-center justify-between">
           <div>
-            <div className="text-sm font-semibold" style={{ color: "var(--c-fg)" }}>Pay Now</div>
+            <div className="text-sm font-semibold" style={{ color: "var(--c-fg)" }}>Pay salaries</div>
             <div className="text-xs" style={{ color: "var(--c-dim)" }}>
-              Immediately execute payroll — salaries sent directly from the agent wallet.
+              Computes payroll from attendance, then sends payments directly from your connected wallet.
             </div>
           </div>
           <div className="flex flex-wrap gap-2 items-center">
-            <select className="text-xs" value={period} onChange={(e) => setPeriod(e.target.value as typeof period)} disabled={payNowBusy}>
+            <select className="text-xs" value={period} onChange={(e) => setPeriod(e.target.value as typeof period)} disabled={running}>
               <option value="daily">Daily</option>
               <option value="weekly">Weekly</option>
               <option value="monthly">Monthly</option>
             </select>
-            <select className="text-xs" value={offset} onChange={(e) => setOffset(Number(e.target.value) as 0 | -1)} disabled={payNowBusy}>
+            <select className="text-xs" value={offset} onChange={(e) => setOffset(Number(e.target.value) as 0 | -1)} disabled={running}>
               <option value={0}>{periodLabel(period, 0)}</option>
               <option value={-1}>{periodLabel(period, -1)}</option>
             </select>
             <button
-              onClick={payNow}
-              disabled={payNowBusy || running || selectedIds.size === 0}
-              className="btn-primary flex items-center gap-2"
+              onClick={runAgent}
+              disabled={running || selectedIds.size === 0 || !address}
+              className="btn-primary"
+              title={!address ? "Connect your wallet first" : undefined}
             >
-              {payNowBusy
-                ? <><Spinner />Processing…</>
+              {running
+                ? <span className="flex items-center gap-2"><Spinner />Running…</span>
+                : !address
+                ? "Connect wallet"
+                : switching
+                ? "Switching network…"
                 : selectedIds.size === 0
                 ? "No employees selected"
                 : selectedIds.size < employees.length
                 ? `Pay ${selectedIds.size} employee${selectedIds.size !== 1 ? "s" : ""}`
-                : "Pay Now"}
+                : "Run agent"}
             </button>
           </div>
         </div>
-        {payNowResult && (
-          <p className={`text-xs font-medium break-all rounded-xl px-3 py-2 ${payNowResult.ok ? "" : "text-red-400"}`}
-            style={payNowResult.ok
-              ? { color: "var(--c-primary)", background: "var(--c-primary-glow)", border: "1px solid var(--c-border-s)" }
-              : { background: "rgba(239,68,68,0.06)", border: "1px solid rgba(239,68,68,0.2)" }
-            }>
-            {payNowResult.text}
+
+        {walletBalance && (
+          <p className="text-xs" style={{ color: "var(--c-dim)" }}>
+            Wallet balance: <span className="font-semibold" style={{ color: "var(--c-muted)" }}>
+              {parseFloat(formatEther(walletBalance.value)).toFixed(4)} 0G
+            </span>
           </p>
         )}
-      </div>
-
-      {/* ── Run agent (verbose log) ── */}
-      <div className="card p-5 flex flex-wrap gap-3 items-center justify-between">
-        <div>
-          <div className="text-sm font-semibold" style={{ color: "var(--c-fg)" }}>Manual run</div>
-          <div className="text-xs" style={{ color: "var(--c-dim)" }}>
-            Shows a full agent log — previews amounts, then sends payments from the agent wallet.
-          </div>
-        </div>
-        <div className="flex flex-wrap gap-2 items-center">
-          <select className="text-xs" value={period} onChange={(e) => setPeriod(e.target.value as typeof period)} disabled={running}>
-            <option value="daily">Daily payout</option>
-            <option value="weekly">Weekly payout</option>
-            <option value="monthly">Monthly payout</option>
-          </select>
-          <select className="text-xs" value={offset} onChange={(e) => setOffset(Number(e.target.value) as 0 | -1)} disabled={running}>
-            <option value={0}>{periodLabel(period, 0)}</option>
-            <option value={-1}>{periodLabel(period, -1)}</option>
-          </select>
-          <button
-            onClick={runAgent}
-            disabled={running || payNowBusy || selectedIds.size === 0}
-            className="btn-primary"
-          >
-            {running
-              ? <span className="flex items-center gap-2"><Spinner />Running…</span>
-              : selectedIds.size === 0
-              ? "No employees selected"
-              : selectedIds.size < employees.length
-              ? `Run for ${selectedIds.size} employee${selectedIds.size !== 1 ? "s" : ""}`
-              : "Run agent"}
-          </button>
-        </div>
       </div>
 
       {/* ── Chat log ── */}
       <div className="card overflow-hidden flex flex-col" style={{ minHeight: 480 }}>
         <div className="px-5 py-3 flex items-center gap-2" style={{ borderBottom: "1px solid var(--c-border)" }}>
           <div className="w-2 h-2 rounded-full animate-pulse" style={{ background: "var(--c-primary)" }} />
-          <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--c-dim)" }}>
-            Agent log
-          </span>
+          <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--c-dim)" }}>Agent log</span>
         </div>
         <div className="flex-1 overflow-y-auto p-5 space-y-4">
           {messages.map((m, i) => <Bubble key={i} msg={m} price={price} />)}
@@ -553,30 +505,17 @@ export default function AgentPanel({ employer }: { employer: string }) {
         <div className="card p-6">
           <div className="flex items-center justify-between mb-4">
             <div className="text-sm font-semibold" style={{ color: "var(--c-fg)" }}>
-              Payroll breakdown ·{" "}
-              {new Date(report.weekStart).toLocaleDateString()}
-              {report.weekStart !== report.weekEnd
-                ? ` → ${new Date(report.weekEnd).toLocaleDateString()}`
-                : ""}
+              Payroll breakdown · {new Date(report.weekStart).toLocaleDateString()}
+              {report.weekStart !== report.weekEnd ? ` → ${new Date(report.weekEnd).toLocaleDateString()}` : ""}
             </div>
-            <a
-              href={`/api/payroll/export?employer=${employer}&weekOffset=${offset}`}
-              className="text-xs transition-colors"
-              style={{ color: "var(--c-primary)" }}
-            >
+            <a href={`/api/payroll/export?employer=${employer}&weekOffset=${offset}`}
+              className="text-xs" style={{ color: "var(--c-primary)" }}>
               Export CSV
             </a>
           </div>
           <table className="table-zg w-full">
             <thead>
-              <tr>
-                <th>Employee</th>
-                <th>Wallet</th>
-                <th>Hours</th>
-                <th>Rate</th>
-                <th className="text-right">Amount</th>
-                <th className="text-right">Status</th>
-              </tr>
+              <tr><th>Employee</th><th>Wallet</th><th>Hours</th><th>Rate</th><th className="text-right">Amount</th></tr>
             </thead>
             <tbody>
               {report.lines.map((l) => (
@@ -585,19 +524,8 @@ export default function AgentPanel({ employer }: { employer: string }) {
                   <td className="font-mono text-xs" style={{ color: "var(--c-dim)" }}>{short(l.wallet)}</td>
                   <td style={{ color: "var(--c-muted)" }}>{l.hoursWorked.toFixed(2)}h</td>
                   <td className="text-xs" style={{ color: "var(--c-dim)" }}>{l.hourlyRate} 0G/hr</td>
-                  <td className="text-right">
-                    <span className="font-semibold" style={{ color: "var(--c-fg)" }}>{fmt0G(l.amountWei)}</span>
-                    {tokenToUSD(Number(BigInt(l.amountWei)) / 1e18, price) && (
-                      <div className="text-xs font-normal" style={{ color: "var(--c-dim)" }}>
-                        ≈{tokenToUSD(Number(BigInt(l.amountWei)) / 1e18, price)}
-                      </div>
-                    )}
-                  </td>
-                  <td className="text-right">
-                    {BigInt(l.amountWei) > 0n
-                      ? <span className="pill-cyan text-xs">Paid</span>
-                      : <span className="pill text-xs" style={{ background: "var(--c-bg-hover)", color: "var(--c-muted)", border: "1px solid var(--c-border)" }}>No hours</span>
-                    }
+                  <td className="text-right font-semibold" style={{ color: "var(--c-fg)" }}>
+                    {BigInt(l.amountWei) > 0n ? fmt0G(l.amountWei) : <span style={{ color: "var(--c-dim)" }}>—</span>}
                   </td>
                 </tr>
               ))}
@@ -605,15 +533,7 @@ export default function AgentPanel({ employer }: { employer: string }) {
             <tfoot>
               <tr style={{ borderTop: "1px solid var(--c-border)" }}>
                 <td colSpan={4} className="pt-3 text-xs uppercase font-semibold" style={{ color: "var(--c-dim)" }}>Total</td>
-                <td className="pt-3 text-right font-bold" style={{ color: "var(--c-fg)" }}>
-                  {fmt0G(report.totalPaidWei)}
-                  {tokenToUSD(Number(BigInt(report.totalPaidWei)) / 1e18, price) && (
-                    <div className="text-xs font-normal" style={{ color: "var(--c-dim)" }}>
-                      ≈{tokenToUSD(Number(BigInt(report.totalPaidWei)) / 1e18, price)}
-                    </div>
-                  )}
-                </td>
-                <td />
+                <td className="pt-3 text-right font-bold" style={{ color: "var(--c-fg)" }}>{fmt0G(report.totalPaidWei)}</td>
               </tr>
             </tfoot>
           </table>
@@ -624,35 +544,29 @@ export default function AgentPanel({ employer }: { employer: string }) {
 }
 
 function Bubble({ msg, price }: { msg: Message; price: number | null }) {
-  if (msg.from === "system") {
+  if (msg.from === "system")
     return <div className="text-center text-xs py-1" style={{ color: "var(--c-dim)" }}>{msg.text}</div>;
-  }
-  if (msg.from === "tx") {
+
+  if (msg.from === "tx")
     return (
       <div className="flex gap-3">
         <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 text-sm"
-          style={{ background: "var(--c-bg-hover)", border: "1px solid var(--c-border-s)" }}>
-          🔗
-        </div>
+          style={{ background: "var(--c-bg-hover)", border: "1px solid var(--c-border-s)" }}>🔗</div>
         <div className="flex-1">
           <div className="rounded-2xl rounded-tl-sm px-4 py-3 text-sm"
             style={{ color: "var(--c-primary)", background: "var(--c-primary-glow)", border: "1px solid var(--c-border-s)" }}>
             {msg.text}
-            {msg.txHash && (
-              <div className="mt-1 font-mono text-xs break-all" style={{ color: "var(--c-muted)" }}>{msg.txHash}</div>
-            )}
+            {msg.txHash && <div className="mt-1 font-mono text-xs break-all" style={{ color: "var(--c-muted)" }}>{msg.txHash}</div>}
           </div>
           <div className="text-xs mt-1 ml-2" style={{ color: "var(--c-dim)" }}>{new Date(msg.ts).toLocaleTimeString()}</div>
         </div>
       </div>
     );
-  }
+
   return (
     <div className="flex gap-3">
       <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 text-white text-xs font-bold"
-        style={{ background: "linear-gradient(135deg, #9200e1 0%, #dd23bb 100%)", boxShadow: "0 0 12px rgba(146,0,225,0.3)" }}>
-        AI
-      </div>
+        style={{ background: GRADIENT, boxShadow: "0 0 12px rgba(146,0,225,0.3)" }}>AI</div>
       <div className="flex-1">
         <div className="rounded-2xl rounded-tl-sm px-4 py-3 text-sm whitespace-pre-wrap"
           style={{ color: "var(--c-muted)", background: "var(--c-bg-hover)", border: "1px solid var(--c-border)" }}>
@@ -662,8 +576,7 @@ function Bubble({ msg, price }: { msg: Message; price: number | null }) {
               {msg.lines.map((l) => {
                 const usd = tokenToUSD(Number(BigInt(l.amountWei)) / 1e18, price);
                 return (
-                  <div key={l.employeeId}
-                    className="flex justify-between text-xs rounded-xl px-3 py-2"
+                  <div key={l.employeeId} className="flex justify-between text-xs rounded-xl px-3 py-2"
                     style={{ background: "var(--c-bg-card)", border: "1px solid var(--c-border)" }}>
                     <span className="font-medium" style={{ color: "var(--c-fg)" }}>{l.employeeName}</span>
                     <span style={{ color: "var(--c-dim)" }}>{l.hoursWorked.toFixed(2)}h</span>

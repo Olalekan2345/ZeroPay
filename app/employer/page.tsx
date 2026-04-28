@@ -3,7 +3,6 @@
 import { useAccount } from "wagmi";
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import AgentWalletCard from "@/components/AgentWalletCard";
 import EmployeesPanel from "@/components/EmployeesPanel";
 import AttendanceLog from "@/components/AttendanceLog";
 import PayrollPanel from "@/components/PayrollPanel";
@@ -144,7 +143,7 @@ export default function EmployerPage() {
       </div>
 
       {/* Tab content — rendered but hidden when inactive to preserve React state */}
-      <div className={tab === "overview"   ? "" : "hidden"}><div className="space-y-6"><AgentWalletCard employer={employer} /><OverviewStats employer={employer} /></div></div>
+      <div className={tab === "overview"   ? "" : "hidden"}><OverviewStats employer={employer} /></div>
       <div className={tab === "team"       ? "" : "hidden"}><EmployeesPanel    employer={employer} /></div>
       <div className={tab === "attendance" ? "" : "hidden"}><AttendanceLog     employer={employer} /></div>
       <div className={tab === "agent"      ? "" : "hidden"}><AgentPanel        employer={employer} /></div>
