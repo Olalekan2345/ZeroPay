@@ -26,6 +26,8 @@ type Payload = {
   error?: string;
 };
 
+const EXPLORER = process.env.NEXT_PUBLIC_ZG_EXPLORER ?? "https://chainscan-galileo.0g.ai";
+
 export default function EmployeePage() {
   const { address, isConnected } = useAccount();
   const [data, setData] = useState<Payload | null>(null);
@@ -166,8 +168,8 @@ export default function EmployeePage() {
       {/* Payment history */}
       <div className="card p-6 space-y-4">
         <div>
-          <div className="text-sm font-semibold" style={{ color: "var(--c-fg)" }}>Payment history</div>
-          <div className="text-xs mt-0.5" style={{ color: "var(--c-dim)" }}>Paid from the employer payroll pool on schedule.</div>
+          <div className="text-sm font-semibold" style={{ color: "var(--c-fg)" }}>Transaction history</div>
+          <div className="text-xs mt-0.5" style={{ color: "var(--c-dim)" }}>Salary payments sent directly to your wallet.</div>
         </div>
         <div className="overflow-x-auto">
           <table className="table-zg w-full">
@@ -176,7 +178,7 @@ export default function EmployeePage() {
                 <th>Period</th>
                 <th>Hours</th>
                 <th>Amount</th>
-                <th>Tx</th>
+                <th>Transaction</th>
               </tr>
             </thead>
             <tbody>
@@ -187,10 +189,32 @@ export default function EmployeePage() {
               )}
               {data.history.map((h, i) => (
                 <tr key={i}>
-                  <td>{new Date(h.weekStart).toLocaleDateString()}</td>
-                  <td>{h.hoursWorked.toFixed(2)}</td>
+                  <td>
+                    <div>{new Date(h.weekStart).toLocaleDateString()}</div>
+                    {h.weekEnd && h.weekEnd !== h.weekStart && (
+                      <div className="text-xs" style={{ color: "var(--c-dim)" }}>
+                        → {new Date(h.weekEnd).toLocaleDateString()}
+                      </div>
+                    )}
+                  </td>
+                  <td>{h.hoursWorked.toFixed(2)}h</td>
                   <td className="font-semibold" style={{ color: "var(--c-primary)" }}>{fmt0G(h.amountWei)}</td>
-                  <td className="font-mono text-xs" style={{ color: "var(--c-dim)" }}>{h.txHash ? short(h.txHash) : "—"}</td>
+                  <td>
+                    {h.txHash ? (
+                      <a
+                        href={`${EXPLORER}/tx/${h.txHash}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="font-mono text-xs transition-colors hover:underline"
+                        style={{ color: "var(--c-primary)" }}
+                        title={h.txHash}
+                      >
+                        {short(h.txHash)} ↗
+                      </a>
+                    ) : (
+                      <span style={{ color: "var(--c-dim)" }}>—</span>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>

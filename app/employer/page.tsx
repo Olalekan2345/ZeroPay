@@ -1,6 +1,6 @@
 "use client";
 
-import { useAccount } from "wagmi";
+import { useAccount, useBalance } from "wagmi";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import EmployeesPanel from "@/components/EmployeesPanel";
@@ -9,7 +9,9 @@ import PayrollPanel from "@/components/PayrollPanel";
 import AgentPanel from "@/components/AgentPanel";
 import BusinessHeader from "@/components/BusinessHeader";
 import TransactionHistory from "@/components/TransactionHistory";
-import { short } from "@/lib/format";
+import { short, fmt0G } from "@/lib/format";
+import { zgGalileo } from "@/lib/chain";
+import { formatEther } from "viem";
 
 type Who =
   | { role: "employer"; tenantExists: boolean }
@@ -143,7 +145,7 @@ export default function EmployerPage() {
       </div>
 
       {/* Tab content — rendered but hidden when inactive to preserve React state */}
-      <div className={tab === "overview"   ? "" : "hidden"}><OverviewStats employer={employer} /></div>
+      <div className={tab === "overview"   ? "" : "hidden"}><OverviewStats employer={employer} address={address!} /></div>
       <div className={tab === "team"       ? "" : "hidden"}><EmployeesPanel    employer={employer} /></div>
       <div className={tab === "attendance" ? "" : "hidden"}><AttendanceLog     employer={employer} /></div>
       <div className={tab === "agent"      ? "" : "hidden"}><AgentPanel        employer={employer} /></div>
@@ -153,8 +155,9 @@ export default function EmployerPage() {
   );
 }
 
-function OverviewStats({ employer }: { employer: string }) {
+function OverviewStats({ employer, address }: { employer: string; address: `0x${string}` }) {
   const [stats, setStats] = useState({ employees: 0, openClockIns: 0, reports: 0 });
+  const { data: walletBalance } = useBalance({ address, chainId: zgGalileo.id });
 
   useEffect(() => {
     Promise.all([
@@ -170,11 +173,44 @@ function OverviewStats({ employer }: { employer: string }) {
     });
   }, [employer]);
 
+  const balanceEth = walletBalance ? parseFloat(formatEther(walletBalance.value)) : null;
+
   return (
-    <div className="grid sm:grid-cols-3 gap-4">
-      <StatCard label="Team members"        value={stats.employees}    color="#9200e1" />
-      <StatCard label="Currently clocked in" value={stats.openClockIns} color="#dd23bb" glow={stats.openClockIns > 0} />
-      <StatCard label="Payroll runs"         value={stats.reports}      color="#7b00bf" />
+    <div className="space-y-4">
+      {/* Wallet balance card */}
+      <div className="card p-6"
+        style={{ background: "linear-gradient(135deg, rgba(146,0,225,0.08) 0%, rgba(221,35,187,0.04) 100%)" }}>
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <div className="text-xs uppercase tracking-widest font-semibold" style={{ color: "var(--c-dim)" }}>
+              Employer wallet balance
+            </div>
+            <div className="text-4xl font-black mt-2 tabular-nums" style={{ color: "var(--c-fg)" }}>
+              {balanceEth !== null ? `${balanceEth.toFixed(4)} 0G` : "—"}
+            </div>
+            <div className="text-xs mt-1 font-mono break-all" style={{ color: "var(--c-dim)" }}>
+              {short(address)}
+            </div>
+          </div>
+          <div className="w-12 h-12 rounded-2xl flex items-center justify-center flex-shrink-0"
+            style={{ background: "linear-gradient(135deg, #9200e1 0%, #dd23bb 100%)", boxShadow: "0 0 20px rgba(146,0,225,0.3)" }}>
+            <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+                d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          </div>
+        </div>
+        <p className="text-xs mt-3" style={{ color: "var(--c-dim)" }}>
+          Salaries are sent directly from this wallet. Make sure it has enough 0G before running payroll.
+        </p>
+      </div>
+
+      {/* Stat cards */}
+      <div className="grid sm:grid-cols-3 gap-4">
+        <StatCard label="Team members"         value={stats.employees}    color="#9200e1" />
+        <StatCard label="Currently clocked in" value={stats.openClockIns} color="#dd23bb" glow={stats.openClockIns > 0} />
+        <StatCard label="Payroll runs"         value={stats.reports}      color="#7b00bf" />
+      </div>
     </div>
   );
 }
