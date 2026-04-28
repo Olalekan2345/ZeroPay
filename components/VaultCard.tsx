@@ -205,13 +205,15 @@ export default function VaultCard({ employer }: { employer: string }) {
     try {
       const ok = await ensureNetwork();
       if (!ok) return;
-      const r = await fetch("/api/deploy-pool/bytecode");
+      const r = await fetch(`/api/deploy-pool/bytecode?employer=${employer}`);
       if (!r.ok) throw new Error((await r.json()).error ?? "Bytecode not available. Run: npm run compile");
-      const { bytecode } = await r.json();
+      const { bytecode, operatorAddress } = await r.json();
+      const operator = (operatorAddress ?? address) as `0x${string}`;
       setDeployMsg({ text: "Deploying vault — confirm in your wallet…", ok: true });
       const hash = await deployContractAsync({
         abi:     PAYROLL_POOL_ABI,
         bytecode,
+        args:    [address as `0x${string}`, operator],
         chainId: zgGalileo.id,
         gas:     1_500_000n,
       });
