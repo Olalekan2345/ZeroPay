@@ -2,11 +2,11 @@
 
 import { useState } from "react";
 
-export default function ShareLink() {
+export default function ShareLink({ employer }: { employer: string }) {
   const [copied, setCopied] = useState(false);
 
   async function copy() {
-    const link = `${window.location.origin}/employee`;
+    const link = `${window.location.origin}/employee?employer=${employer}`;
     await navigator.clipboard.writeText(link);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
@@ -16,11 +16,7 @@ export default function ShareLink() {
     <button
       onClick={copy}
       title="Copy employee portal link to share with your team"
-      className={`btn text-xs font-medium transition-all ${
-        copied
-          ? "bg-brand-50 text-brand-700 border border-brand-200 dark:bg-brand-900/30 dark:text-brand-300"
-          : "bg-slate-100 hover:bg-slate-200 text-ink-600 dark:bg-gray-800 dark:hover:bg-gray-700 dark:text-gray-300"
-      }`}
+      className="btn-ghost text-xs px-3 py-1.5"
     >
       {copied ? (
         <span className="flex items-center gap-1.5">

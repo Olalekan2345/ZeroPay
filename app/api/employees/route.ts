@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { listEmployees, upsertEmployee, deleteEmployee } from "@/lib/db";
+import { listEmployees, upsertEmployee, deleteEmployee, findEmployeeByWallet } from "@/lib/db";
 import { putJSON } from "@/lib/storage";
 import { requireEmployer } from "@/lib/tenant";
 import type { Employee } from "@/lib/types";
@@ -30,6 +30,16 @@ export async function POST(req: Request) {
       { error: "employer cannot add themselves as an employee" },
       { status: 400 },
     );
+
+  // Block if this wallet is already employed by another employer
+  const existing = await findEmployeeByWallet(wallet.toLowerCase());
+  const otherEmployer = existing.find((h) => h.employer !== g.employer);
+  if (otherEmployer)
+    return NextResponse.json(
+      { error: `This wallet is already registered under another employer. They must be removed there first.` },
+      { status: 409 },
+    );
+
   if (!Number.isFinite(hourlyRate) || hourlyRate <= 0)
     return NextResponse.json({ error: "invalid hourlyRate" }, { status: 400 });
 

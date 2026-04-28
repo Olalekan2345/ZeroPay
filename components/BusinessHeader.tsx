@@ -47,7 +47,7 @@ export default function BusinessHeader({ employer }: { employer: string }) {
       </div>
 
       <div className="flex flex-wrap gap-2 items-center">
-        <ShareLink />
+        <ShareLink employer={employer} />
 
         {editing ? (
           <div className="flex gap-2">

@@ -17,16 +17,28 @@ import crypto from "node:crypto";
 
 const DATA_DIR = path.join(process.cwd(), "data");
 const STORAGE_DIR = path.join(DATA_DIR, "storage");
+const TMP_STORAGE_DIR = path.join("/tmp", "zp-storage");
 
-async function ensureDirs() {
-  await fs.mkdir(STORAGE_DIR, { recursive: true });
+async function ensureDirs(): Promise<string> {
+  try {
+    await fs.mkdir(STORAGE_DIR, { recursive: true });
+    // Verify writability with a quick probe
+    const probe = path.join(STORAGE_DIR, ".probe");
+    await fs.writeFile(probe, "");
+    await fs.unlink(probe);
+    return STORAGE_DIR;
+  } catch {
+    // Vercel and other read-only filesystems: fall back to /tmp
+    await fs.mkdir(TMP_STORAGE_DIR, { recursive: true });
+    return TMP_STORAGE_DIR;
+  }
 }
 
 function hashContent(buf: Buffer): string {
   return crypto.createHash("sha256").update(buf).digest("hex");
 }
 
-async function uploadToZG(buf: Buffer): Promise<string | null> {
+async function uploadToZG(buf: Buffer, storageDir: string): Promise<string | null> {
   const pk = process.env.EMPLOYER_PRIVATE_KEY;
   const indexer = process.env.NEXT_PUBLIC_ZG_STORAGE_INDEXER;
   const rpc = process.env.NEXT_PUBLIC_ZG_RPC_URL;
@@ -41,7 +53,7 @@ async function uploadToZG(buf: Buffer): Promise<string | null> {
     const ZgFile = sdk.ZgFile ?? sdk.default?.ZgFile;
     if (!Indexer || !ZgFile) return null;
 
-    const tmp = path.join(STORAGE_DIR, `upload-${Date.now()}.bin`);
+    const tmp = path.join(storageDir, `upload-${Date.now()}.bin`);
     await fs.writeFile(tmp, buf);
     try {
       const file = await ZgFile.fromFilePath(tmp);
@@ -63,29 +75,28 @@ async function uploadToZG(buf: Buffer): Promise<string | null> {
 }
 
 export async function putJSON(obj: unknown): Promise<string> {
-  await ensureDirs();
+  const dir = await ensureDirs();
   const payload = Buffer.from(JSON.stringify(obj, null, 2), "utf8");
 
-  const zgRoot = await uploadToZG(payload);
+  const zgRoot = await uploadToZG(payload, dir);
   if (zgRoot) {
-    const ref = `0g:${zgRoot}`;
-    await fs.writeFile(path.join(STORAGE_DIR, `${zgRoot}.json`), payload);
-    return ref;
+    await fs.writeFile(path.join(dir, `${zgRoot}.json`), payload).catch(() => {});
+    return `0g:${zgRoot}`;
   }
 
   const h = hashContent(payload);
-  await fs.writeFile(path.join(STORAGE_DIR, `${h}.json`), payload);
+  await fs.writeFile(path.join(dir, `${h}.json`), payload);
   return `local:${h}`;
 }
 
 export async function getJSON<T = unknown>(ref: string): Promise<T | null> {
-  await ensureDirs();
+  const dir = await ensureDirs();
   const id = ref.replace(/^(0g:|local:)/, "");
-  const file = path.join(STORAGE_DIR, `${id}.json`);
-  try {
-    const raw = await fs.readFile(file, "utf8");
-    return JSON.parse(raw) as T;
-  } catch {
-    return null;
+  for (const d of [dir, STORAGE_DIR, TMP_STORAGE_DIR]) {
+    try {
+      const raw = await fs.readFile(path.join(d, `${id}.json`), "utf8");
+      return JSON.parse(raw) as T;
+    } catch { /* try next */ }
   }
+  return null;
 }
