@@ -143,13 +143,13 @@ export default function EmployerPage() {
         ))}
       </div>
 
-      {/* Tab content */}
-      {tab === "overview"   && <div className="space-y-6"><PoolCard employer={employer} /><OverviewStats employer={employer} /></div>}
-      {tab === "team"       && <EmployeesPanel  employer={employer} />}
-      {tab === "attendance" && <AttendanceLog   employer={employer} />}
-      {tab === "agent"      && <AgentPanel      employer={employer} />}
-      {tab === "payroll"    && <PayrollPanel    employer={employer} />}
-      {tab === "history"    && <TransactionHistory employer={employer} />}
+      {/* Tab content — rendered but hidden when inactive to preserve React state */}
+      <div className={tab === "overview"   ? "" : "hidden"}><div className="space-y-6"><PoolCard employer={employer} /><OverviewStats employer={employer} /></div></div>
+      <div className={tab === "team"       ? "" : "hidden"}><EmployeesPanel    employer={employer} /></div>
+      <div className={tab === "attendance" ? "" : "hidden"}><AttendanceLog     employer={employer} /></div>
+      <div className={tab === "agent"      ? "" : "hidden"}><AgentPanel        employer={employer} /></div>
+      <div className={tab === "payroll"    ? "" : "hidden"}><PayrollPanel      employer={employer} /></div>
+      <div className={tab === "history"    ? "" : "hidden"}><TransactionHistory employer={employer} /></div>
     </div>
   );
 }
