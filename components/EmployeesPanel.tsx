@@ -90,7 +90,13 @@ export default function EmployeesPanel({ employer }: { employer: string }) {
         body: JSON.stringify({ employeeId, action }),
       });
       if (!res.ok) throw new Error((await res.json()).error ?? "failed");
-      await refresh();
+      const entry = await res.json();
+      // Update local state from the server response directly — don't re-fetch,
+      // which could hit a different Vercel instance with a stale /tmp store.
+      setAtt((prev) => {
+        const filtered = prev.filter((a) => a.id !== entry.id);
+        return [...filtered, entry];
+      });
       setMsg({ text: `Clocked ${action} successfully.`, ok: true });
     } catch (err) {
       setMsg({ text: (err as Error).message, ok: false });
