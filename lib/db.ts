@@ -10,6 +10,8 @@ import type { Employee, AttendanceEntry, PayrollReport } from "./types";
 
 const DATA_DIR = path.join(process.cwd(), "data");
 const TENANTS_DIR = path.join(DATA_DIR, "tenants");
+// Vercel's filesystem is read-only except for /tmp; writes go there and reads check it first
+const TMP_DIR = path.join("/tmp", "zp-data");
 
 export type PaymentSchedule = {
   frequency: "daily" | "weekly" | "monthly";
@@ -29,24 +31,26 @@ export type TenantSettings = {
 
 /** Read the operator private key — stored in a gitignored file, never in settings.json. */
 export async function getOperatorKey(employer: string): Promise<string | null> {
-  try {
-    const key = await fs.readFile(
-      path.join(tenantDir(normEmp(employer)), "operator.key"),
-      "utf8",
-    );
-    return key.trim() || null;
-  } catch {
-    return null;
+  const file = path.join(tenantDir(normEmp(employer)), "operator.key");
+  for (const f of [tmpPath(file), file]) {
+    try {
+      const key = await fs.readFile(f, "utf8");
+      if (key.trim()) return key.trim();
+    } catch { /* try next */ }
   }
+  return null;
 }
 
 export async function saveOperatorKey(employer: string, key: string) {
   await ensure(employer);
-  await fs.writeFile(
-    path.join(tenantDir(normEmp(employer)), "operator.key"),
-    key,
-    { mode: 0o600 },
-  );
+  const file = path.join(tenantDir(normEmp(employer)), "operator.key");
+  try {
+    await fs.writeFile(file, key, { mode: 0o600 });
+  } catch {
+    const tmp = tmpPath(file);
+    await fs.mkdir(path.dirname(tmp), { recursive: true });
+    await fs.writeFile(tmp, key);
+  }
 }
 
 function normEmp(addr: string): string {
@@ -59,19 +63,33 @@ function tenantDir(employer: string) {
 }
 
 async function ensure(employer: string) {
-  await fs.mkdir(tenantDir(employer), { recursive: true });
+  await fs.mkdir(tenantDir(employer), { recursive: true }).catch(() => {});
+}
+
+function tmpPath(file: string): string {
+  return path.join(TMP_DIR, path.relative(process.cwd(), file));
 }
 
 async function readJson<T>(file: string, fallback: T): Promise<T> {
-  try {
-    return JSON.parse(await fs.readFile(file, "utf8")) as T;
-  } catch {
-    return fallback;
+  // Check /tmp first — it holds the most recent writes on Vercel
+  for (const f of [tmpPath(file), file]) {
+    try {
+      return JSON.parse(await fs.readFile(f, "utf8")) as T;
+    } catch { /* try next */ }
   }
+  return fallback;
 }
 
 async function writeJson(file: string, data: unknown) {
-  await fs.writeFile(file, JSON.stringify(data, null, 2));
+  const json = JSON.stringify(data, null, 2);
+  try {
+    await fs.writeFile(file, json);
+  } catch {
+    // Vercel read-only FS: mirror write to /tmp
+    const tmp = tmpPath(file);
+    await fs.mkdir(path.dirname(tmp), { recursive: true });
+    await fs.writeFile(tmp, json);
+  }
 }
 
 /* ---------- settings ---------- */
