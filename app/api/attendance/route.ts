@@ -3,7 +3,6 @@ import {
   listAttendance,
   addAttendance,
   updateAttendance,
-  listEmployees,
 } from "@/lib/db";
 import { putJSON } from "@/lib/storage";
 import { requireEmployer } from "@/lib/tenant";
@@ -51,10 +50,6 @@ export async function POST(req: Request) {
   const employeeId = String(body.employeeId ?? "");
   if (!employeeId)
     return NextResponse.json({ error: "employeeId required" }, { status: 400 });
-
-  const employees = await listEmployees(g.employer);
-  if (!employees.find((e) => e.id === employeeId))
-    return NextResponse.json({ error: "unknown employee" }, { status: 404 });
 
   const rows = await listAttendance(g.employer);
   const open = rows.find((r) => r.employeeId === employeeId && !r.clockOut);
