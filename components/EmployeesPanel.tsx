@@ -39,8 +39,9 @@ export default function EmployeesPanel({ employer }: { employer: string }) {
         }),
       });
       if (!res.ok) throw new Error((await res.json()).error ?? "failed");
+      const newEmployee: Employee = await res.json();
       setForm({ name: "", wallet: "", hourlyRate: "" });
-      await refresh();
+      setRows((prev) => [...prev, newEmployee]);
       setMsg({ text: "Employee registered and saved to 0G Storage.", ok: true });
     } catch (err) {
       setMsg({ text: (err as Error).message, ok: false });
@@ -68,7 +69,9 @@ export default function EmployeesPanel({ employer }: { employer: string }) {
       });
       if (!res.ok) throw new Error((await res.json()).error ?? "failed");
       setEditId(null);
-      await refresh();
+      setRows((prev) => prev.map((emp) =>
+        emp.id === id ? { ...emp, name: draft.name.trim(), hourlyRate } : emp
+      ));
       setMsg({ text: "Employee updated and saved to 0G Storage.", ok: true });
     } catch (err) {
       setMsg({ text: (err as Error).message, ok: false });
@@ -78,7 +81,7 @@ export default function EmployeesPanel({ employer }: { employer: string }) {
   async function remove(id: string) {
     if (!confirm("Remove this employee? They can register as an employer afterwards.")) return;
     await fetch(`/api/employees?employer=${employer}&id=${id}`, { method: "DELETE" });
-    await refresh();
+    setRows((prev) => prev.filter((emp) => emp.id !== id));
   }
 
   async function clock(employeeId: string, action: "in" | "out") {
